@@ -1,0 +1,53 @@
+# Bergen Sprint -- compact fjord town.
+course_id: bergen-sprint
+slug: bergen-sprint
+name: Bergen Sprint
+place: Bergen, Norway
+country: "NO"
+timezone: Europe/Oslo
+distance_type: Sprint
+difficulty: MODERATE
+character: fjord_town
+tone_color: "#44607f"
+
+start:
+  lat: 60.3855
+  lng: 5.3345
+
+swim:
+  water_kind: lake
+  water_name: Store Lungegardsvannet
+  bearing_deg: 150
+
+bike:
+  laps: 2
+  bearing_offset_deg: 100
+  character: fjord_town
+
+run:
+  laps: 2
+  bearing_offset_deg: 260
+  character: fjord_town
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.05
+
+changelog: >-
+  Initial generated bundle. Urban lake swim, two-lap city bike leg, two-lap run.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/09-bergen-sprint.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending

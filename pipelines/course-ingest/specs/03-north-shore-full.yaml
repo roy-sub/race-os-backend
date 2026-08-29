@@ -1,0 +1,54 @@
+# North Shore Full -- harbour and volcanic coastline, rolling.
+course_id: north-shore-full
+slug: north-shore-full
+name: North Shore Full
+place: Auckland, New Zealand
+country: NZ
+timezone: Pacific/Auckland
+distance_type: Full
+difficulty: HARD
+character: harbour_volcanic
+tone_color: "#1d5f6b"
+
+start:
+  lat: -36.7877
+  lng: 174.7745
+
+swim:
+  water_kind: sea
+  water_name: Hauraki Gulf
+  bearing_deg: 80
+
+bike:
+  laps: 1
+  bearing_offset_deg: 330
+  character: harbour_volcanic
+
+run:
+  laps: 4
+  bearing_offset_deg: 180
+  character: rolling
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.02
+
+changelog: >-
+  Initial generated bundle. Takapuna sea swim, rolling North Shore bike leg,
+  four-lap coastal marathon.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/03-north-shore-full.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending

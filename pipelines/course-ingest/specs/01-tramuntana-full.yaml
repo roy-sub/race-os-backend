@@ -1,0 +1,56 @@
+# Tramuntana Full -- the flagship. Mountainous.
+#
+# Fictional race, real terrain. Start at Port d'Alcudia on the Bay of Alcudia:
+# a sheltered bay big enough for a 3.8 km sea swim, a flat seafront for the
+# marathon, and the Serra de Tramuntana passes within reach of the bike leg.
+#
+# This start matches SOLVER_MODEL.md B.1's `C-TRAM` (lat 39.85, lng 3.12) so
+# the seeded course and the golden fixture describe the same place. They remain
+# entirely separate artefacts -- see README.md, "Golden fixtures".
+
+course_id: tramuntana-full
+slug: tramuntana-full
+name: Tramuntana Full
+place: Mallorca, Spain
+country: ES
+timezone: Europe/Madrid
+distance_type: Full
+difficulty: BRUTAL
+character: mountainous
+tone_color: "#2f5d50"
+
+start:
+  lat: 39.8402
+  lng: 3.1210
+
+swim:
+  water_kind: sea
+  water_name: Badia d'Alcudia
+  bearing_deg: 45
+
+bike:
+  laps: 1
+  bearing_offset_deg: 250
+  character: mountainous
+
+run:
+  laps: 4
+  bearing_offset_deg: 20
+  character: flat_coastal
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.00
+
+changelog: >-
+  Initial generated bundle. Bike leg routed over the Tramuntana foothills from
+  Port d'Alcudia; four-lap coastal marathon. Terrain from OpenStreetMap ways and
+  Terrarium DEM; all furniture ESTIMATED.
+notes: >-
+  Flagship course and the largest expected plan count. Standard cut-off ladder
+  on hard terrain, which is what makes it moderately tight for a mid-packer.
+
+# In the shipping set.
+status: ready

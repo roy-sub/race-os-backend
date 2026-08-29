@@ -1,0 +1,102 @@
+# Aid stations, transitions, special needs, distance markers and cut-off
+# barriers. All of it is INVENTED for fictional races and therefore stamped
+# provenance ESTIMATED, honestly. What follows is the rule set that generates
+# it, so the numbers are defensible rather than arbitrary.
+
+provenance: ESTIMATED
+
+aid_stations:
+  # Conventional long-course spacing. Bike stations sit far enough apart that an
+  # athlete must carry between them; run stations sit close enough that a
+  # walk-through is always within reach. The solver reasons over this spacing,
+  # so it has to be plausible.
+  spacing:
+    Full:
+      BIKE: {first_km: 20.0, spacing_km: 25.0}
+      RUN:  {first_km: 2.1,  spacing_km: 2.1}
+    "70.3":
+      BIKE: {first_km: 20.0, spacing_km: 22.5}
+      RUN:  {first_km: 2.1,  spacing_km: 2.1}
+    Olympic:
+      BIKE: {first_km: 20.0, spacing_km: 20.0}
+      RUN:  {first_km: 2.5,  spacing_km: 2.5}
+    Sprint:
+      BIKE: {first_km: 10.0, spacing_km: 10.0}
+      RUN:  {first_km: 2.5,  spacing_km: 2.5}
+  # The last station must leave at least this much road to the finish, else it
+  # is dropped: a station 300 m from the line is not a station.
+  min_tail_km: 1.0
+  contents:
+    BIKE:
+      standard: ["water", "sports_drink", "banana", "energy_bar"]
+      full_service: ["water", "sports_drink", "energy_gel", "banana", "energy_bar", "salt_tablets", "toilets", "mechanical_support"]
+    RUN:
+      standard: ["water", "sports_drink", "cola", "energy_gel"]
+      full_service: ["water", "sports_drink", "cola", "energy_gel", "salt_tablets", "fruit", "ice", "sponges", "toilets", "medical"]
+  # Every Nth station (1-indexed) carries the full-service list.
+  full_service_every_n:
+    BIKE: 2
+    RUN: 4
+
+waypoints:
+  # Kept OUT of aid_stations on purpose. "One action per aid station" is a
+  # solver correctness property (SOLVER_MODEL.md 5.5) and it holds by
+  # construction if the aid_stations array contains only aid stations.
+  transitions:
+    # T1 sits at swim exit / bike start; T2 at bike finish / run start.
+    t1: {name: "T1", leg: BIKE, km: 0.0}
+    t2: {name: "T2", leg: RUN, km: 0.0}
+  special_needs:
+    # Mid-leg bag the athlete pre-packs. Placed at the leg midpoint, then
+    # snapped to the nearest aid station within `snap_to_aid_within_km` so it
+    # sits somewhere an athlete actually stops.
+    at_fraction: 0.5
+    snap_to_aid_within_km: 4.0
+    legs_by_distance:
+      Full: [BIKE, RUN]
+      "70.3": [BIKE]
+      Olympic: []
+      Sprint: []
+  distance_markers:
+    # Stored in km. Unit conversion is a frontend concern.
+    BIKE:
+      Full: 10.0
+      "70.3": 10.0
+      Olympic: 5.0
+      Sprint: 5.0
+    RUN:
+      Full: 1.0
+      "70.3": 1.0
+      Olympic: 1.0
+      Sprint: 1.0
+    SWIM:
+      Full: 0.95
+      "70.3": 0.95
+      Olympic: 0.75
+      Sprint: 0.375
+
+barriers:
+  # Reference cut-off ladder, minutes from the athlete's start. The Full row is
+  # the structure given in the brief; the other three reproduce the reference
+  # values in SOLVER_MODEL.md B.1 for C-HALF, C-OLY and C-SPR exactly, so the
+  # seeded courses and the golden fixtures agree on the shape of a cut-off.
+  reference_minutes:
+    Full:    {swim_exit: 140.0, bike_cutoff: 630.0, finish: 960.0}
+    "70.3":  {swim_exit: 70.0,  bike_cutoff: 330.0, finish: 510.0}
+    Olympic: {swim_exit: 50.0,  bike_cutoff: 170.0, finish: 240.0}
+    Sprint:  {swim_exit: 30.0,  bike_cutoff: 95.0,  finish: 130.0}
+  # Intermediate bike checkpoint. Position is a fraction of bike distance; its
+  # time is a fraction of the swim_exit -> bike_cutoff window. The two fractions
+  # differ (0.667 vs 0.755) because an athlete slows through a long bike leg.
+  # Full: 140 + 0.755 * (630 - 140) = 510 min at km 120, reproducing C-TRAM.
+  intermediate_bike_checkpoint:
+    enabled_for: ["Full", "70.3"]
+    distance_fraction: 0.6667
+    time_fraction: 0.7551
+    name_template: "bike_km_{km:.0f}"
+  # Per-course dial from the seed spec. Multiplies every limit. 1.00 is the
+  # reference ladder; below 1.00 tightens the whole course. This is how the
+  # seeded set gets a spread of difficulty rather than nine identical races.
+  generosity_bounds: [0.80, 1.20]
+  # Rounded to this many decimal places so limits are stable and human-readable.
+  round_minutes_dp: 0

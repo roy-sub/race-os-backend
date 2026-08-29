@@ -1,0 +1,55 @@
+# Cala Olympic -- approachable, first-timer friendly.
+course_id: cala-olympic
+slug: cala-olympic
+name: Cala Olympic
+place: Mallorca, Spain
+country: ES
+timezone: Europe/Madrid
+distance_type: Olympic
+difficulty: APPROACHABLE
+character: approachable
+tone_color: "#3f8f8a"
+
+start:
+  lat: 39.5940
+  lng: 3.3830
+
+swim:
+  water_kind: sea
+  water_name: Cala Millor
+  bearing_deg: 70
+
+bike:
+  laps: 1
+  bearing_offset_deg: 240
+  character: approachable
+
+run:
+  laps: 2
+  bearing_offset_deg: 20
+  character: approachable
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.10
+
+changelog: >-
+  Initial generated bundle. Cove swim at Cala Millor, flat Llevant plain bike,
+  two-lap seafront run.
+notes: The gentlest course in the set, and the most generous cut-offs. Built for first-timers.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/04-cala-olympic.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending
