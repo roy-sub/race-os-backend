@@ -53,7 +53,7 @@ Per course, in `out/`:
 | `bundles/<slug>.bundle.bin` | The packed bundle behind `course_bundles.bundle_asset_key`. Under the 400 KB budget. |
 | `terrain/<slug>.pmtiles` | Terrarium DEM clipped to the course bounding box, for `course_bundles.terrain_pmtiles_key`. |
 | `visual-check/<slug>.png` | Static map plus elevation profile. |
-| `visual-check/nine-course-contact-sheet.png` | Every generated course on one sheet. |
+| `visual-check/contact-sheet.png` | Every generated course on one sheet. |
 | `visual-check/three-course-review.html` | The full review page: per course a map, profile, distances, character verdict, cut-off ladder and margin spot-check. |
 
 `out/` is git-ignored. Bundles and terrain extracts are build artefacts that belong in object

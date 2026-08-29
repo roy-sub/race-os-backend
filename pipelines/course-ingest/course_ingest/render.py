@@ -272,11 +272,11 @@ def render_contact_sheet(bundles_dir: str | Path, out_dir: str | Path) -> Path:
 
     attribution = json.loads(files[0].read_text(encoding="utf-8"))["course_bundle"]["attribution"]
     fig.suptitle(
-        f"RaceOS seeded courses -- visual check ({len(files)} courses)\n{attribution}",
+        f"RaceOS seeded courses -- visual check ({len(files)} generated)\n{attribution}",
         fontsize=12,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    path = out_dir / "nine-course-contact-sheet.png"
+    path = out_dir / "contact-sheet.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
