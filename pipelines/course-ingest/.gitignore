@@ -1,7 +1,22 @@
-# Build artefacts. Bundles and terrain extracts belong in object storage behind a
-# CDN (RaceOS_Build_Spec.md Part 10.3), and a terrain extract is tens of MB.
-# `course-ingest regenerate-all` rebuilds everything from specs/.
-out/
+# Build artefacts.
+#
+# `out/bundles/` and `out/terrain/` are deliberately NOT ignored: the backend
+# loads the bundles as seed fixtures at milestone 3 (Part 21.1), and the terrain
+# extracts are what `course_bundles.terrain_pmtiles_key` points at. They have to
+# be committable for a checkout to be able to seed.
+#
+# Note on the terrain extracts: they are ~20 MB for three courses and grow with
+# every course added. Part 10.3 puts them in object storage behind a CDN, which
+# is where they belong long term -- committing them is a launch convenience, not
+# the destination. Everything under out/ is reproducible from specs/ with
+# `course-ingest regenerate-all`.
+out/*
+!out/bundles/
+!out/terrain/
+
+# Review images and the review page: regenerable, and not codebase content.
+out/visual-check/
+
 .cache/
 __pycache__/
 *.egg-info/

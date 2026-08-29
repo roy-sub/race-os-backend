@@ -49,7 +49,7 @@ The cut-off feature is one of the product's two course-data differentiators, so 
 | **Tramuntana Full** | Full | mountainous | **1.00** | 140 | 630 | 960 | Reference ladder on hard terrain. Tight for a mid-packer *because of the climbing*, not because the limits were moved. |
 | **Serra Classic** | Full | rugged mountain | **0.97** | 136 | 611 | 931 | Rugged terrain plus a slightly tightened ladder. |
 | **Patagonia Full** | Full | lake mountain | **0.95** | 133 | 599 | 912 | Brutal terrain on a tightened ladder. The hardest course in the set. |
-| **Skagen 70.3** | 70.3 | flat exposed | **0.88** | 62 | 290 | 449 | **The tight 70.3.** |
+| **Skagen 70.3** | 70.3 | flat exposed | **0.84** | 59 | 277 | 428 | **The tight 70.3.** |
 
 ### Why Skagen is tightened rather than another mountain course
 
@@ -58,8 +58,23 @@ genuinely tight courses were full distance, an athlete planning a 70.3 would nev
 feature work, and half the primary market would be looking at seed data that never exercises it.
 
 Skagen is flat and fast, so tightness cannot come from the terrain — it has to come from the ladder.
-`0.88` turns a comfortable day into a real one: a mid-pack age-grouper who would finish a reference
-70.3 with an hour in hand finishes Skagen with minutes.
+`0.84` turns a comfortable day into a real one. Measured with `tools/margin_check.py`, the tightest
+barrier for each profile:
+
+| Profile | Skagen margin | Peak load | Verdict | Kalmar, for contrast |
+|---|---|---|---|---|
+| Strong age-grouper | +25 min | 75% | CLEAR | +40 min, CLEAR |
+| **Mid-pack** | **+19 min** | **82%** | **TIGHT** | +34 min, CLEAR |
+| First-timer | +11 min | 93% | TIGHT | +26 min, CLEAR |
+
+The dial was set by measurement rather than by feel. `0.88` put a first-timer inside the 20-minute
+clear/tight band but left mid-pack at +22 min, just outside it; `0.84` brings the athlete the feature
+is really about inside the band without making the course unfinishable for anyone.
+
+Note which barrier binds: it is `swim_exit` on every profile, not the bike cut-off. On a flat, fast
+70.3 the bike and run are never the problem — a slow swimmer getting pulled at the water exit is. That
+is a realistic failure mode and a useful one to have in seed data, but it is worth knowing that
+Skagen exercises the swim barrier rather than the bike one.
 
 The three tight courses therefore span both primary distances and both mechanisms: **Tramuntana**
 tight from terrain alone at reference limits, **Patagonia and Serra** tight from terrain *and* a

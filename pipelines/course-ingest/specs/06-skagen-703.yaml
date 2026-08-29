@@ -36,8 +36,12 @@ verified: false
 # The tight 70.3. RaceOS's primary market is Full AND 70.3, so the cut-off
 # feature has to be visible in seed data at both distances -- not only on the
 # two brutal fulls. Skagen is flat and fast, so tightness has to come from the
-# ladder rather than the terrain: 0.88 turns a comfortable day into a real one.
-cutoff_generosity: 0.88
+# ladder rather than the terrain.
+#
+# 0.88 put a first-timer inside the 20-minute clear/tight band but left a
+# mid-pack athlete at +22 min, just outside it. 0.84 is set so the athlete the
+# cut-off feature is really about sees it bite.
+cutoff_generosity: 0.84
 
 changelog: >-
   Initial generated bundle. Exposed dune-coast bike leg, two-lap town run.
