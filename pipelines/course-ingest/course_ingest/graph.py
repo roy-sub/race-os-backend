@@ -354,6 +354,7 @@ class LoopRouter:
         self.annulus = float(loop["candidate_annulus_fraction"])
         self.max_candidates = int(loop["max_candidates_per_waypoint"])
         self.repeat_penalty = float(loop["repeat_edge_penalty"])
+        self.cul_de_sac_penalty_m = float(loop["cul_de_sac_penalty_m"])
 
     # ------------------------------------------------------------- waypoints
 
@@ -397,17 +398,24 @@ class LoopRouter:
                 t = 0.5 if count == 1 else k / (count - 1)
                 bearing = bearing_offset - span / 2.0 + span * t
             ring_pt = destination(origin, bearing, radius_m)
-            candidates: list[tuple[int, float, float, int]] = []
+            candidates: list[tuple[float, float, int]] = []
             for n in sorted(component):
                 d = haversine_m(self.g.node_xy[n], ring_pt)
                 if d > annulus_m:
                     continue
-                # Prefer a junction. A waypoint on a cul-de-sac forces the route
+                # Prefer a junction: a waypoint on a cul-de-sac forces the route
                 # to reverse out the way it came, which is what puts implausible
                 # stubs on the map even when the elevation profile is right.
-                degree_class = 0 if len(self.g.adj[n]) >= 3 else 1
+                #
+                # A soft penalty rather than a hard sort key. Making it decisive
+                # cost the flagship course 700 m of climbing, because the best
+                # high ground in a sector is often reached by a spur road. The
+                # penalty is denominated in metres of elevation error, so a
+                # dead-end worth the detour still wins.
                 score = abs(self.g.node_h[n] - target_h)
-                candidates.append((degree_class, score, d, n))
+                if len(self.g.adj[n]) < 3:
+                    score += self.cul_de_sac_penalty_m
+                candidates.append((score, d, n))
             if not candidates:
                 # Widen once to the nearest node in the component, so a sparse
                 # sector degrades rather than failing the whole build.
@@ -417,7 +425,7 @@ class LoopRouter:
                 picks.append(nearest[1])
                 continue
             candidates.sort()
-            picks.append(candidates[: self.max_candidates][0][3])
+            picks.append(candidates[: self.max_candidates][0][2])
         # Collapse consecutive duplicates; a loop through the same node twice in
         # a row is a degenerate sector, not a route.
         deduped: list[int] = []

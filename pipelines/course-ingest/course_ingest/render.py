@@ -179,6 +179,40 @@ def _headline(bundle: dict) -> str:
     )
 
 
+def _draw_start_inset(ax_map, legs: dict) -> None:
+    """Inset on the transition area.
+
+    A 3.8 km swim beside a 180 km bike leg is four pixels wide on the main map,
+    so the leg that is the only DRAWN geometry in the bundle -- the one most
+    worth eyeballing -- is invisible exactly where it matters.
+    """
+    swim = legs.get("SWIM")
+    if not swim or not swim["nodes"]:
+        return
+    inset = ax_map.inset_axes([0.02, 0.02, 0.30, 0.30])
+    inset.set_facecolor(BACKGROUND)
+    xs = [p[0] for p in swim["nodes"]]
+    ys = [p[1] for p in swim["nodes"]]
+    pad_x = (max(xs) - min(xs)) * 0.8 + 1e-4
+    pad_y = (max(ys) - min(ys)) * 0.8 + 1e-4
+    for leg in ("BIKE", "RUN", "SWIM"):
+        data = legs.get(leg)
+        if not data:
+            continue
+        style = LEG_STYLE[leg]
+        inset.plot([p[0] for p in data["nodes"]], [p[1] for p in data["nodes"]],
+                   color=style["color"], lw=style["lw"], zorder=2)
+    inset.plot([xs[0]], [ys[0]], marker="o", ms=5, mfc="#ffffff", mec="#222222", mew=1.2, zorder=4)
+    inset.set_xlim(min(xs) - pad_x, max(xs) + pad_x)
+    inset.set_ylim(min(ys) - pad_y, max(ys) + pad_y)
+    _equal_aspect(inset, sum(ys) / len(ys))
+    inset.set_xticks([])
+    inset.set_yticks([])
+    inset.set_title("swim & transition", fontsize=6, pad=2)
+    for spine in inset.spines.values():
+        spine.set_color("#999999")
+
+
 def render_course(result, out_dir: str | Path) -> list[Path]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -191,6 +225,7 @@ def render_course(result, out_dir: str | Path) -> list[Path]:
     )
     fig.patch.set_facecolor("#ffffff")
     _draw_map(ax_map, legs, _headline(bundle), _aid_positions(bundle))
+    _draw_start_inset(ax_map, legs)
     _draw_profile(ax_prof, legs, bundle["course_bundle"]["attribution"])
     _annotate_climbs(ax_prof, bundle, legs)
     ax_map.legend(
@@ -227,6 +262,7 @@ def render_contact_sheet(bundles_dir: str | Path, out_dir: str | Path) -> Path:
         legs = _legs_from_fixture(bundle)
         r, c = divmod(i, cols)
         _draw_map(axes[r * 2][c], legs, _headline(bundle), _aid_positions(bundle))
+        _draw_start_inset(axes[r * 2][c], legs)
         _draw_profile(axes[r * 2 + 1][c], legs)
 
     for i in range(len(files), rows * cols):
