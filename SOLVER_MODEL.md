@@ -31,6 +31,28 @@ Three things this document deliberately refuses to do:
 3. **It does not hide a disagreement with the literature.** §0.7 records the two places where this model
    deliberately departs from a number already visible in the product, and why.
 
+### 0.1b Scope — which distances this model is accountable for
+
+**RaceOS targets Ironman (full) and Ironman 70.3.** Those two distances are the primary scope: their
+constants are sourced, their golden cases are the ones that matter, and the validation protocol in §C is
+written against them.
+
+**Olympic and Sprint exist in the seeded course directory and must keep working, but they are not primary
+and their intensity-factor bands are extrapolated rather than sourced.** Nothing in the short-course
+literature I could reach supports specific age-group intensity targets, partly because short-course racing
+is drafting-legal and therefore tactical in a way this model does not represent at all. The `olympic` and
+`sprint` rows of `if_ref` were obtained by continuing the shape of the `full` and `half` rows, which is a
+defensible way to produce a working number and not a defensible way to produce an evidenced one.
+
+Consequences, applied throughout:
+
+- The `olympic` and `sprint` rows are marked **out-of-primary-scope, unvalidated** in §4.2.1 and §A.
+- §C sets no error target for them and excludes them from back-testing.
+- Their golden cases (`G03`, `G04`) exist to exercise code paths — the short-distance branch, the
+  `pace_target ≥ run_threshold_pace` clamp — **not** to assert that the numbers are right.
+- A plan produced for those distances should not be marketed on the same accuracy claim as a full or 70.3
+  plan until someone validates them.
+
 ### 0.2 Source verification status — read this before trusting a constant
 
 Every constant below is cited. **However, this document was researched in an environment whose egress
@@ -72,6 +94,10 @@ paper are not the same object, and a document whose entire purpose is trustworth
 
 Internal computation is float64 throughout. All angles in radians internally; gradients are stored and
 configured as fractions, never percentages.
+
+**§0.9 is a glossary** of the terms whose everyday coaching usage is looser than this document's usage —
+`run_threshold_pace`, CSS, NP, VI, "tightest" versus "earliest missed" barrier, and the difference between
+an `estimated` constraint and an assumed field. Where the two usages differ, the glossary governs.
 
 **Legs** are `swim | t1 | bike | t2 | run`. **Distance types** are `full | half | olympic | sprint`.
 **Levels** are `first | improver | experienced`. **Risk** is `conservative | balanced | aggressive`.
@@ -145,6 +171,36 @@ Constraint keys used by `bind()` are of three kinds, and all three are legitimat
 - **Model limit keys** — `model:<limit_name>`, e.g. `model:gastric_emptying_cap`,
   `model:if_ceiling`, `model:vi_ceiling`, `model:carb_hard_max`. These are configured limits, and the
   config table in §A is their register.
+
+### 0.5b `assumed_fields` — declaring what the solver had to guess
+
+Four inputs are optional (§F). When one is absent the solver substitutes a documented default and **names
+the substitution in the output**:
+
+```
+SolveOutput.assumed_fields : tuple[str, ...]      # sorted, dotted paths, empty when nothing was assumed
+```
+
+Emitted paths and their fallbacks:
+
+| Path | Fallback | §  |
+|---|---|---|
+| `athlete.bike_setup` | `road_clipons` + `standard` helmet | I.2.3 |
+| `forecast.pressure_hpa` | ISA standard, 101325 Pa at sea level | I.1.1 |
+| `forecast.cloud_cover_pct` | categorical mapping from `conditions` | I.1.3 |
+| `sweat_rate.measured_at_temp_c` | `w_sweat_ref = 15.0 °C WBGT` | 5.2 |
+
+The tuple is **sorted lexicographically** so it is deterministic, and it is part of the golden-file output.
+
+This exists because the alternative is worse in a specific way. A default that is silently substituted is
+indistinguishable, downstream, from a value the athlete actually supplied — so the UI cannot mark it, the
+back-test cannot exclude it, and the drift service cannot tell "the athlete told us something new" from
+"the athlete changed their mind". `assumed_fields` keeps the numeric path unchanged (the default is used at
+full weight, exactly as §0.6 requires of an estimate) while keeping the *fact of the assumption* visible.
+
+Note the deliberate asymmetry with §0.6: an `estimated` **constraint** is a value the athlete supplied
+through an estimator, and it is never flagged. An **assumed field** is a value nobody supplied at all. The
+first is a statement about confidence; the second is a statement about absence.
 
 ### 0.6 Provenance and estimated constraints
 
@@ -242,6 +298,32 @@ or database access — none of which is in this document's scope. That headroom 
 a future decision to raise `if_grid_step` resolution, or to add a second optimisation dimension, has room
 to land.
 
+### 0.9 Glossary of the terms this model defines precisely
+
+Terms whose everyday coaching usage is looser than this document's usage. Where the two differ, the
+definition here governs the mathematics.
+
+| Term | Definition as used in this model |
+|---|---|
+| **`run_threshold_pace`** | The pace the athlete could hold in an all-out **one-hour** race, s·km⁻¹. The running equivalent of FTP. Not 10 km pace, not lactate-threshold pace, not marathon pace. Entry routes and conversions: §2.5 |
+| **`swim_threshold_pace` / CSS** | **Critical Swim Speed**, s·(100 m)⁻¹, from the 400/200 pair: `CSS = 200/(t₄₀₀ − t₂₀₀)`. An **asymptotic** threshold speed — the slope of the distance–time line — not the pace at any particular distance. Modelled in §4.4 |
+| **`D′` (D-prime)** | The intercept of the swimming distance–time line, in metres: the finite distance available above CSS. The swimming analogue of W′. §4.4.1 |
+| **FTP / `bike_threshold_power`** | The power sustainable for approximately one hour, W. Unchanged from standard usage |
+| **IF (intensity factor)** | Planned normalised power as a fraction of FTP. In this model `IF_ref` is a *target*, not the output of a free search — §4.1 |
+| **NP (normalised power)** | Fatigue-weighted mean power. Computed at **segment resolution** here (§4.2.2), which is not the same as the 30-second rolling definition and systematically reads lower |
+| **VI (variability index)** | `NP / AP`. At segment resolution this model produces VI ≈ 1.00; it is a safety rail, not an active constraint (§4.2.2) |
+| **CdA** | Drag area, m². Driven by the `bike_setup` input (§I.2.3), not by athlete level |
+| **Crr** | Coefficient of rolling resistance. A property of the **course surface**, from the bundle, not of the athlete |
+| **WBGT** | Wet Bulb Globe Temperature, °C. The heat-stress index both heat curves are expressed in (§I.1.3). Not dry-bulb temperature, and typically several degrees below it |
+| **`T_w`** | Psychrometric **wet-bulb air** temperature (§I.1.2). Never the water temperature, which is `T_water` |
+| **Barrier / gate / cut-off** | A mandatory time limit at a point on the course. `barrier` is the bundle's term, `gate` the plan's |
+| **Tightest barrier** | The barrier with the smallest margin. Drives `worst_margin_minutes` and `margin_state` |
+| **Earliest missed barrier** | The missed barrier with the lowest `limit_minutes_from_start`. This is what an infeasibility **reports**, because it is where the athlete's race actually ends (§3.3) |
+| **Binding constraint** | The named limit that determined an emitted value, produced by `bind()` (§0.5). A first-class output, not a post-hoc explanation |
+| **Assumed field** | An optional input that was absent, so the solver used a documented default. Listed in `assumed_fields` (§0.5b). Distinct from an `estimated` constraint |
+| **Net gradient** | `(h_end − h_start) / distance` for a segment. Sets the segment's **power target**. Never used to compute its **time** — §1.1 |
+| **Gradient histogram** | Per-segment map of gradient bin to total distance in that bin. What time is actually integrated over (§1.1). Quadrature, not smoothing |
+
 ---
 
 # Part I — Shared machinery
@@ -286,10 +368,22 @@ T_K      = T + 273.15
 | `tetens_b` | 17.27 | — | Tetens equation | High | as above |
 | `tetens_c` | 237.3 | °C | Tetens equation | High | as above |
 
-**Modelling choice worth naming.** Pressure comes from the *standard atmosphere at the course's elevation*,
-not from the forecast, because `ForecastSnapshot` does not carry barometric pressure. Real pressure varies
-±4% around standard, which is ±4% on the aerodynamic term — comparable to the entire heat effect. Adding
-`pressure_hpa` to the forecast snapshot would remove this error at essentially zero cost. See §D-3.
+**`forecast.pressure_hpa` (new input, §F.3).** When supplied, it replaces the ISA term entirely:
+
+```
+p(h) = pressure_hpa · 100 · (1 − L·h_station / T₀)^5.25588  /  (1 − L·h_sea / T₀)^5.25588
+```
+
+In practice forecast providers report pressure already reduced to sea level (QNH), in which case
+`h_station = h` and `h_sea = 0`, so this collapses to `p(h) = pressure_hpa · 100 · (1 − 0.0065·h/288.15)^5.25588`
+— the ISA formula with the measured sea-level pressure substituted for the 101325 Pa standard. The adapter
+must confirm which convention its provider uses; station pressure passed as sea-level pressure would be
+wrong by roughly 1.2% per 100 m of elevation.
+
+**When absent**, fall back to `p₀ = 101325 Pa` (the standard atmosphere) and add `forecast.pressure_hpa` to
+`SolveOutput.assumed_fields`. Real pressure varies about ±4% around standard, which is ±4% on the
+aerodynamic term — comparable to the entire heat effect — so this fallback is a genuine error source and
+the output says so rather than hiding it. Range check: 870–1085 hPa; outside that, treat as absent.
 
 **Clamps.** `h` clamped to [−430, 5000] m (Dead Sea to above any plausible race). `T` clamped to
 [−20, 55] °C. `RH` clamped to [1, 100] %. Resulting `ρ` asserted within [0.55, 1.50] kg·m⁻³; outside is a
@@ -336,12 +430,23 @@ where `c` is cloud fraction. `ForecastSnapshot.conditions` is categorical, so it
 | `overcast` | 0.95 | 1.83 |
 | `rain` | 1.00 | 1.50 |
 
-**This is the one genuinely discrete input in the whole model, and it is worth being honest about.** The
-contract requires that a plan not jump because a forecast moved 0.1 °C; it says nothing about a forecast
-moving from `clear` to `partly_cloudy`, which under this table moves WBGT by 0.46 °C and a mid-level run
-pace by roughly 1.5 s·km⁻¹. That is a real discontinuity. It is structured as a **linear interpolation in
-cloud fraction** precisely so that the moment a forecast provider supplies numeric cloud cover — most do —
-the function becomes continuous with no change to the model, only to the adapter. See §D-4.
+**`forecast.cloud_cover_pct` (new input, §F.3) removes this table from the numeric path.** When supplied:
+
+```
+c = clamp(cloud_cover_pct, 0, 100) / 100
+```
+
+and the globe offset is then continuous in cloud cover, exactly as it already is in temperature and
+humidity. This closes the last discontinuity in the environment model.
+
+**When absent**, fall back to the categorical mapping above and add `forecast.cloud_cover_pct` to
+`SolveOutput.assumed_fields`. Under the fallback the input is genuinely discrete: a forecast moving from
+`clear` to `partly_cloudy` moves WBGT by 0.46 °C and a mid-level run pace by roughly 1.5 s·km⁻¹, with no
+intermediate values. The contract requires that a plan not jump because a forecast moved 0.1 °C; it says
+nothing about a categorical change, but the effect on an athlete's plan is the same kind of surprise. The
+mapping was written as a **linear interpolation in cloud fraction** from the outset precisely so that
+supplying the numeric field is an adapter change and not a model change — the categories are simply the
+four points this curve is sampled at when nothing better is available.
 
 | Constant | Value | Source | Confidence | What would change it |
 |---|---|---|---|---|
@@ -604,7 +709,8 @@ assumption alone can flip a feasibility verdict. Inferring it from `athlete.leve
 well-equipped first-timer and the experienced athlete on a road bike, and the error lands squarely on the
 cut-off verdict.
 
-**Therefore this model requires a new athlete input, `bike_setup`** — a product decision taken on review.
+**Therefore this model requires a new athlete input, `bike_setup`** — a product decision taken on review and
+specified in full in §F.2.
 
 ```
 CdA = clamp( base[position] + level_adj[level] + helmet_adj[helmet],  0.19,  0.38 )
@@ -633,9 +739,11 @@ up. The table spans the right range at both ends.
 none peer-reviewed), **Low on the modifiers** (reasoned, not measured).
 
 **Fallback when `bike_setup` is absent** — required for existing athletes and for `preview_only` solves:
-`road_clipons` + level adjustment + `standard` helmet. This must set `constraint_refs` for CdA to
-`source = 'estimated'` and is a prime candidate for the drift mechanism once the athlete supplies a real
-answer.
+`road_clipons` + level adjustment + `standard` helmet, i.e. CdA 0.30 / 0.28 / 0.26 by level. This must set
+the CdA `constraint_ref` to `source = 'estimated'` and add `athlete.bike_setup` to
+`SolveOutput.assumed_fields`. Because the fallback can sit up to 0.045 m² away from an athlete's true value
+— about 15 minutes over 180 km — supplying `bike_setup` for an existing athlete will frequently cross the
+drift thresholds in §A, which is the correct behaviour: it is new information that genuinely moves the plan.
 
 **Bike and kit mass**, also not captured. Defaults by level, from `solver/tables/equipment.py`:
 `first 11.0 kg`, `improver 10.0 kg`, `experienced 9.0 kg`. **Low confidence, but low stakes** — ±1 kg on an
@@ -711,7 +819,7 @@ per-node solve over an 1802-node bike leg:
 | Rolling (0.035) | 478.83 min | 368.15 min | **−23.11%** |
 | Mountainous (0.055) | 586.12 min | 370.59 min | **−36.77%** |
 
-Even a near-flat course is 3.3% fast, which is the whole error budget of §C.2 spent on a quadrature choice.
+Even a near-flat course is 3.3% fast, which is the whole error budget of §C.3 spent on a quadrature choice.
 On rolling terrain the model would be unusable.
 
 **Therefore Stage 1 also emits a gradient histogram per segment**, and Stage 4 integrates time over it:
@@ -785,6 +893,20 @@ consequence of the data rather than as a stored label.
 
 ## §2 Stage 2 — Read athlete constraints (~0.3 s)
 
+> **The two threshold definitions, stated once so an implementer cannot get them wrong:**
+>
+> **`run_threshold_pace` is the pace the athlete could hold in an all-out ONE-HOUR race**, in seconds per
+> kilometre — the running equivalent of FTP. It is *not* 10 km pace, *not* lactate-threshold pace, and
+> *not* marathon pace. §2.5 gives the conversion from a recent race result and the exact onboarding wording.
+>
+> **`swim_threshold_pace` is Critical Swim Speed**, in seconds per 100 m, as derived from the standard
+> 400 m / 200 m time-trial pair: `CSS = 200 / (t₄₀₀ − t₂₀₀)`. CSS is an **asymptotic** threshold speed, not
+> the pace at any particular distance. §4.4 models it as such.
+>
+> These two definitions are *not* the same kind of quantity, and §4.4 explains why that matters: a one-hour
+> anchor is a point on a distance–time curve, while an asymptote is its slope. Modelling both with the same
+> Riegel decay would be wrong, and an earlier draft of this document did exactly that.
+
 ### 2.1 What this stage computes
 
 Loads all eight constraints with their `source`, validates them against plausibility ranges, converts to
@@ -812,7 +934,10 @@ defensive postcondition.
 | `caffeine_tolerance` | mg | 0 | 600 | |
 
 A **missing** required constraint raises `MissingConstraint` naming the key. Never a silent default. The
-eight are all required; `bike_setup` is the one optional input and has the documented fallback in §I.2.3.
+eight are all required. Four inputs are **optional** and each has a documented fallback and an
+`assumed_fields` entry when it is absent: `bike_setup` (§I.2.3), `forecast.pressure_hpa` (§I.1.1),
+`forecast.cloud_cover_pct` (§I.1.3), and `sweat_rate.measured_at_temp_c` (§5.2). All four are specified in
+§F.
 
 ### 2.3 Derived quantities
 
@@ -823,11 +948,13 @@ FTP_alt   = bike_threshold_power · alt_factor(h_mean_bike_leg)
 d_thresh  = 3600 / run_threshold_pace          # km covered in 1 h at threshold
 ```
 
-`d_thresh` deserves a note. This model treats `run_threshold_pace` as **the pace sustainable for one hour**,
-which is the standard definition and the one consistent with FTP's definition on the bike. The Riegel
-extrapolation in §4.3 is anchored on that 1-hour point. If the product's onboarding estimator means
-something else by "threshold pace" — a 10 km pace, say — the run model is systematically wrong by several
-percent. This should be checked against the estimator's definition. See §D-7.
+`d_thresh` is the distance the athlete covers in one hour at threshold, and it is the anchor point for the
+Riegel extrapolation in §4.3.1. It is meaningful **only** under the one-hour definition stated at the head
+of this section. §2.5 exists to make sure all three entry routes produce that quantity and not a
+near-neighbour of it.
+
+Note there is deliberately no `d_thresh` analogue for the swim. CSS is an asymptote, so it has no
+characteristic distance; §4.4 uses the critical-speed model directly rather than an anchor distance.
 
 ### 2.4 Worked example — Athlete M
 
@@ -861,6 +988,96 @@ Note `sweat_rate` and `sodium_loss` are `estimated`. They are used at exactly th
 fluid and sodium numbers in §5.5 carry full weight from an estimate, and the UI shows lower trust. That is
 the contract working as designed.
 
+
+### 2.5 The three entry routes for `run_threshold_pace`, and how each derives it
+
+A provenance stamp is honest about *where* a number came from. It says nothing about whether two numbers
+are the same quantity. If the typed route means one-hour pace, the estimator means 10 km pace and the
+upload route means something else again, then `measured` and `estimated` values are not comparable, every
+back-test mixes two populations, and the calibration table in §C.3 will chase a constant that is not
+actually wrong. All three routes must produce the one-hour quantity.
+
+#### 2.5.1 Route 1 — typed directly
+
+The athlete enters a pace. The UI must state the definition inline, not in a tooltip.
+
+#### 2.5.2 Route 2 — converted from a recent race result
+
+Most athletes do not know their one-hour pace but do know a recent race. The conversion uses **the same
+Riegel exponent the model itself uses**, so the anchor and the extrapolation are inverses of each other and
+round-trip exactly. Given a recent race of `d_race` km in `t_race` seconds:
+
+```
+d_1h                = d_race · (3600 / t_race) ^ (1 / r[level])
+run_threshold_pace  = 3600 / d_1h
+```
+
+Derivation: Riegel says `t_race · (d_1h / d_race)^r = 3600`; solve for `d_1h`. Because §4.3.1 applies
+`(d_run / d_thresh)^(r−1)` with the same `r`, an athlete who enters a race result and then races that same
+distance gets their actual result back — a property worth an explicit unit test.
+
+**The asymmetry, which is the reason this helper must exist.** Accepting a 10 km pace directly as threshold
+pace is not a small approximation applied evenly; its size depends on how fast the athlete is, because a
+10 km race lasts a very different time for each of them:
+
+| Athlete | Recent race | Race pace | Derived `d_1h` | Correct threshold pace | Error if the race pace were used directly |
+|---|---|---|---|---|---|
+| Fast (`experienced`, r 1.06) | 10 km in 35:00 | 210 s·km⁻¹ | 16.63 km | 216.5 s·km⁻¹ | **3.00% optimistic** |
+| Mid (`improver`, r 1.07) | 10 km in 45:00 | 270 s·km⁻¹ | 13.09 km | 275.1 s·km⁻¹ | **1.86% optimistic** |
+| Slow (`first`, r 1.08) | 10 km in 55:00 | 330 s·km⁻¹ | 10.84 km | 332.1 s·km⁻¹ | 0.64% optimistic |
+| Slow (`first`, r 1.08) | 10 km in 60:00 | 360 s·km⁻¹ | 10.00 km | 360.0 s·km⁻¹ | **0.00%** |
+
+For the slowest athlete a 10 km race *is* a one-hour race, so the two coincide exactly. For a fast athlete
+a 10 km race lasts 35 minutes and is materially quicker than anything they could hold for an hour, so
+accepting it directly biases them optimistic by 3% — which compounds through `D_dist` into a marathon
+projection and lands on a cut-off margin. **The bias runs the wrong way: it is largest for the athletes who
+race closest to their limits.**
+
+The helper works in both directions. A half-marathon result converts *conservatively* (an `improver` half in
+1:40:00 gives 275.0 s·km⁻¹ against a race pace of 284.4, a 3.4% correction the other way), and a marathon
+result corrects by 8.8%. Accept any race distance from 3 km to marathon; below 3 km the Riegel form is
+unreliable and the input should be refused rather than converted.
+
+#### 2.5.3 Route 3 — derived from an uploaded file
+
+Post-race and training-file uploads must apply one rule, not a heuristic per file type:
+
+```
+1. Find the single longest continuous effort in the file of duration ≥ 20 min and ≤ 90 min
+   whose pace coefficient of variation is < 5% (i.e. an actual sustained effort, not a session average).
+2. Take its distance d_eff (km) and duration t_eff (s).
+3. Apply the §2.5.2 conversion with the athlete's r[level].
+4. If no qualifying effort exists, DO NOT derive a value. Leave the constraint as it was
+   and record why. A derived value from a 12-minute interval or a 4-hour ride is worse
+   than no value, because it will carry a `measured` stamp.
+```
+
+Step 4 matters more than the rest. The calibration service (Build Spec §6.4) writes constraints with
+`source = 'measured'`; a bad derivation therefore *upgrades* provenance while *degrading* the number, which
+is the worst combination the product can produce. The 20–90 minute window brackets the one-hour anchor
+closely enough that the Riegel correction stays small.
+
+#### 2.5.4 Required onboarding wording
+
+The estimator must elicit the one-hour quantity explicitly. Copy is a product decision, but the *semantics*
+are not, and the following is the minimum that makes the three routes commensurable:
+
+> **Threshold running pace**
+> The pace you could hold in an all-out race lasting about one hour — roughly a 15 km to half-marathon
+> effort for most people. Not your easy pace, and not a pace you could only hold for 20 minutes.
+>
+> *Don't know it?* Enter a recent race instead and we'll work it out. → [distance] [time]
+>
+> Whichever you enter, this is stored as **one-hour threshold pace**.
+
+The last line is not decoration. It is what makes the stored number self-describing when it is read back
+months later by the drift service, the coach view, or a back-test.
+
+**Confidence.** The definition is settled by decision, not by evidence, so it carries no confidence rating.
+The *conversion* inherits the confidence of `riegel_r[level]` (Low-Med, §4.3.1) — but note it is used here
+over a much shorter extrapolation (10 km → ~13–17 km) than in §4.3.1 (13 km → 42 km), so the error it
+contributes at this step is small.
+
 ---
 
 ## §3 Stage 3 — Protect the barriers (~1.1 s)
@@ -881,8 +1098,8 @@ For Athlete M on course `C-TRAM` in hot conditions:
 
 | Profile | Bike | Run | Total |
 |---|---|---|---|
-| Planned, IF 0.70 | 406.11 min | 270.57 min | **761.49 min** |
-| "Maximum", IF 0.80 | 376.93 min | 310.65 min | **772.38 min** |
+| Planned, IF 0.70 | 406.11 min | 270.57 min | **762.75 min** |
+| "Maximum", IF 0.80 | 376.93 min | 310.65 min | **773.65 min** |
 
 Riding at maximum sustainable intensity saves 29.2 minutes on the bike and loses 40.1 minutes on the run,
 for a **net loss of 10.9 minutes to the finish**. The maximum-output profile reaches the bike cut-off sooner
@@ -926,19 +1143,45 @@ feasible             = all( margin_min[b] ≥ 0 )
 ```
 
 If any `margin_min[b] < 0`, the plan is infeasible and Stage 4 does not run. Return
-`Infeasibility(barrier, miss_minutes, levers)` with:
+`Infeasibility(barrier, miss_minutes, levers, tightest_barrier, tightest_miss_minutes)` with:
 
 ```
-barrier      = argmin over b of margin_min[b]        # the TIGHTEST, per contract §5.2
-miss_minutes = −margin_min[barrier]                  # rounded to 0.1 min
+missed       = [ b for b in barriers if margin_min[b] < 0 ]
+barrier      = min(missed, key = limit_minutes_from_start)   # the EARLIEST missed — see below
+miss_minutes = -margin_min[barrier]                          # rounded to 0.1 min
+
+tightest_barrier      = argmin over ALL b of margin_min[b]   # retained for diagnostics
+tightest_miss_minutes = -margin_min[tightest_barrier]
 ```
 
-**A contract concern, raised rather than worked around.** The contract specifies the *tightest* barrier.
-Because timing errors accumulate along a race, an athlete who misses a mid-race bike cut-off will miss the
-finish by more, so "tightest by margin" will almost always name the **finish** — while the athlete's race
-actually ends at the bike cut-off, hours earlier, and that is the barrier they need to hear about. This
-model implements the contract as written. The alternative — report the *earliest* missed barrier — is a
-one-line change and, in my view, the better product behaviour. It is not made here unilaterally. See §D-8.
+**This is a deliberate change to the contract, applied on review.** The Build Spec (Part 5 §5.2, Stage 3)
+specifies the *tightest* barrier. That is the wrong one to report, for a concrete reason: timing errors
+accumulate along a race, so an athlete who misses a mid-race bike cut-off necessarily misses the finish by
+more. "Tightest by margin" therefore almost always names the **finish**, while the athlete's race actually
+ends at the bike cut-off, hours earlier.
+
+Golden case `G14-EARLIESTMISS` pins exactly this down. Athlete `A-Y` on `C-TRAM` misses two barriers:
+
+| Barrier | Limit | Minimum ETA | Miss |
+|---|---|---|---|
+| **Bike cut-off** | 630.0 | 640.1 | **10.1 min** — earliest missed, and what is reported |
+| Finish | 960.0 | 1091.8 | 131.8 min — tightest, and materially misleading |
+
+Told "you miss the finish by 132 minutes", this athlete would reasonably conclude the race is far out of
+reach. Told "you miss the bike cut-off by 10 minutes", they learn the truth: the race ends mid-bike, and ten
+minutes is a gap that a winter of work — or a flatter race — genuinely closes. The two framings lead to
+opposite decisions, which is what makes this worth changing the contract for.
+
+`worst_margin_minutes` keeps its contract meaning — the minimum margin across all gates, i.e. the tightest —
+because that is what drives `margin_state` and the drift thresholds in §3.5, and redefining it would ripple
+into the notification logic. Both barriers are returned, so nothing is lost: `tightest_barrier` remains
+available to the admin blast-radius view, which genuinely does want the worst case.
+
+**Levers are computed at the reported (earliest missed) barrier**, not the tightest. This follows
+necessarily: the levers must change *the outcome the athlete was told about*. Offering "raise FTP" because
+it would help a finish the athlete will never reach would be advice about a hypothetical race.
+
+Precise replacement text for the Build Spec is in **§F.5**.
 
 ### 3.4 Levers
 
@@ -951,6 +1194,9 @@ for each lever-eligible constraint c:
     Δ[c] = eta_min[barrier] (perturbed) − eta_min[barrier] (base)      # negative = helps
 rank by Δ ascending; emit the top 1–2 whose Δ magnitude ≥ lever_significance_minutes
 ```
+
+`barrier` in that expression is the **reported** barrier from §3.3 — the earliest missed one, not
+the tightest.
 
 `lever_significance_minutes = 2.0`. If no lever clears it, emit `lower_goal` alone — an honest "nothing
 you can change before race day closes this gap."
@@ -1011,10 +1257,10 @@ structure. Grid scan over IF ∈ [0.50, 0.80] step 0.005, hurry factor 0.85:
 
 | Barrier | Limit | min ETA | at IF | Slack | Verdict |
 |---|---|---|---|---|---|
-| Swim exit | 140.0 | 69.81 | 0.500 (tie) | +70.19 | feasible |
-| Bike km 120 | 510.0 | 344.46 | 0.800 | +165.54 | feasible |
-| Bike cut-off | 630.0 | 454.38 | 0.800 | +175.62 | feasible |
-| Finish | 960.0 | 759.24 | **0.700** | +200.76 | feasible |
+| Swim exit | 140.0 | 71.07 | 0.500 (tie) | +68.93 | feasible |
+| Bike km 120 | 510.0 | 345.72 | 0.800 | +164.28 | feasible |
+| Bike cut-off | 630.0 | 455.65 | 0.800 | +174.35 | feasible |
+| Finish | 960.0 | 760.50 | **0.700** | +199.50 | feasible |
 
 All four feasible → Stage 4 proceeds. Note the finish's minimum sits at IF 0.700, not 0.800: the grid finds
 the over-biking penalty on its own.
@@ -1023,12 +1269,12 @@ Gates against the Stage 4 planned profile (IF 0.700, full-length transitions):
 
 | Gate | Limit | ETA | Margin | Load | State |
 |---|---|---|---|---|---|
-| Swim exit | 140.0 | 69.8 | +70.2 | 49.9% | clear |
-| Bike km 120 | 510.0 | 368.4 | +141.6 | 72.2% | clear |
-| Bike cut-off | 630.0 | 484.9 | +145.1 | 77.0% | clear |
-| Finish | 960.0 | 761.5 | +198.5 | 79.3% | clear |
+| Swim exit | 140.0 | 71.1 | +68.9 | 50.8% | clear |
+| Bike km 120 | 510.0 | 369.7 | +140.3 | 72.5% | clear |
+| Bike cut-off | 630.0 | 486.2 | +143.8 | 77.2% | clear |
+| Finish | 960.0 | 762.8 | +197.2 | 79.5% | clear |
 
-`worst_margin_minutes = +70.2` → `margin_state = clear`. No gate under 20 min, so rule 1 does not fire;
+`worst_margin_minutes = +68.9` → `margin_state = clear`. No gate under 20 min, so rule 1 does not fire;
 the bike is the largest leg, so `binding_constraint_key = bike_threshold_power`.
 
 ---
@@ -1100,22 +1346,29 @@ grade_mod(g) = 1 + k_grade · tanh( g / g_scale )
 | `k_grade` | 0.12 | Atkinson's ~10% variability, rounded up slightly | Med | Back-testing climb splits |
 | `g_scale` | 0.04 | **Estimate** — sets the gradient at which modulation reaches 76% of maximum | **Low** | Nothing published; pure shape parameter |
 
-| `IF_ref` | `first` | `improver` | `experienced` |
-|---|---|---|---|
-| `full` | 0.65 | 0.70 | 0.75 |
-| `half` | 0.72 | 0.78 | 0.83 |
-| `olympic` | 0.80 | 0.85 | 0.88 |
-| `sprint` | 0.85 | 0.90 | 0.95 |
+| `IF_ref` | `first` | `improver` | `experienced` | Scope |
+|---|---|---|---|---|
+| `full` | 0.65 | 0.70 | 0.75 | **Primary** — sourced |
+| `half` | 0.72 | 0.78 | 0.83 | **Primary** — sourced, but contested (below) |
+| `olympic` | 0.80 | 0.85 | 0.88 | ⚠️ Out of primary scope — **extrapolated, unvalidated** |
+| `sprint` | 0.85 | 0.90 | 0.95 | ⚠️ Out of primary scope — **extrapolated, unvalidated** |
 
 `risk_adj`: `conservative −0.03`, `balanced 0.00`, `aggressive +0.03`.
 
-**Confidence and a live disagreement.** The `full` row is well supported: multiple independent sources
-converge on 0.65–0.78 for age-groupers, derived from Allen & Coggan. **The `half` row is contested.** Allen
-& Coggan are cited as 0.83–0.87; TrainingPeaks guidance spans 0.72–0.85; most coaching sources put
-age-groupers at 0.75–0.80. This model takes the lower, age-grouper-weighted figure. The disagreement is
-worth roughly **8 minutes over 90 km** and is not resolved by the evidence I could reach. `olympic` and
-`sprint` are extrapolated from the shape of the other two rows and are **Low confidence** — short-course
-pacing literature is thin because short-course racing is drafting-legal and therefore tactical.
+**Confidence, and the one disagreement that lands on a primary distance.** The `full` row is well supported:
+multiple independent sources converge on 0.65–0.78 for age-groupers, derived from Allen & Coggan.
+
+**The `half` row is contested, and this matters more than anything else in this table**, because 70.3 is one
+of our two primary distances and we currently sit on one side of the disagreement by assumption. Allen &
+Coggan are cited as **0.83–0.87**; TrainingPeaks guidance spans 0.72–0.85; most coaching sources put
+age-groupers at 0.75–0.80. This model takes **0.78** for an improver — the lower, age-grouper-weighted
+figure — on the reasoning that the higher band describes athletes racing for a result rather than athletes
+trying to run well off the bike. That reasoning is plausible and unverified. The gap is worth roughly
+**8 minutes over 90 km**, which is within a factor of three of the entire `clear`/`tight` margin band. It is
+the reason **E-13 sits in the top verification tier alongside E-1** rather than at the bottom of the list.
+
+`olympic` and `sprint` are extrapolated from the shape of the other two rows and are **out of primary scope**
+per §0.1b — Low confidence, unvalidated, and not to be treated as evidence-backed.
 
 #### 4.2.2 Variability ceiling
 
@@ -1350,25 +1603,82 @@ are squarely in the range real athletes of this profile produce in those conditi
 
 ### 4.4 Swim
 
+#### 4.4.1 CSS is an asymptote, and the model must treat it as one
+
+Per the definition settled in §2, `swim_threshold_pace` is Critical Swim Speed from the 400/200 pair. In
+the two-parameter critical-speed model, the athlete's maximal distance–time relationship is a straight line:
+
 ```
-pace = ( CSS × D_dist_swim × wetsuit_factor ) + ow_overhead[level] + water_temp_adj(T_water)
+d = CSS · t + D′
+```
+
+`CSS` is its **slope** — the asymptotic speed as duration grows without bound — and `D′` is its intercept,
+the finite distance available above that asymptote (the swimming analogue of W′). Rearranging for maximal
+speed at a finite distance `d`:
+
+```
+v_max(d)    = CSS · d / (d − D′)          >  CSS  for all finite d
+pace_max(d) = CSS_pace · (d − D′) / d     <  CSS_pace   (pace, so smaller is faster)
+```
+
+**Maximal swim pace at any race distance is therefore faster than CSS, not slower.** An earlier draft of
+this document applied a Riegel-form decay anchored at `d_ref_swim = 2000 m`, which made every race
+distance *slower* than CSS — the right shape for a one-hour anchor, the wrong shape for an asymptote, and
+wrong by about 2.3% at full distance. That model is withdrawn.
+
+The critical-speed model is a *maximal-effort* model, and it holds only over the duration range the
+underlying test spans — conventionally up to about 30 minutes. Beyond that, real sustainable speed falls
+below CSS rather than approaching it from above. So a durability term is applied past that window:
+
+```
+T_max_est   = d · pace_max(d) / 100 / 60                        [minutes]
+excess_min  = max(0, T_max_est − css_validity_min)
+pace_dur(d) = pace_max(d) · (1 + k_swim_dur · excess_min)
+
+pace = ( pace_dur(d) × wetsuit_factor ) + ow_overhead[level] + water_temp_adj(T_water)
 ```
 
 Order matters and is deliberate: the wetsuit multiplies *swimming* pace, while sighting is additive time
 that a wetsuit does not reduce.
 
-```
-D_dist_swim = ( d_swim / d_ref_swim ) ^ (r_swim − 1)
-```
+#### 4.4.2 What this produces, and why it is more credible than the model it replaces
+
+For an athlete with CSS = 105 s·(100 m)⁻¹, before wetsuit and sighting:
+
+| Race distance | `pace_max` | Est. duration | Excess over window | **Planned pace** | vs CSS |
+|---|---|---|---|---|---|
+| 750 m (sprint) | 102.90 | 12.9 min | 0.0 | **102.90** | −2.10 s |
+| 1500 m (olympic) | 103.95 | 26.0 min | 0.0 | **103.95** | −1.05 s |
+| 1900 m (70.3) | 104.17 | 33.0 min | 3.0 | **104.55** | −0.46 s |
+| 3800 m (full) | 104.59 | 66.2 min | 36.2 | **109.13** | **+4.13 s** |
+
+These land on the standard coaching heuristics without being fitted to them: a 70.3 swim is raced at
+approximately CSS, a full-distance swim at roughly CSS + 4 s·(100 m)⁻¹, and the short-course swims
+slightly faster than CSS. That the corrected physical form reproduces the coaching consensus, while the
+withdrawn Riegel form did not, is the main reason for confidence in the change.
+
+#### 4.4.3 Constants
 
 | Constant | Value | Source | Confidence | What would change it |
 |---|---|---|---|---|
-| `d_ref_swim` | 2000 m | CSS from a 400/200 protocol approximates a 30–60 min sustainable pace | **Low-Med** | A published CSS-to-distance mapping |
-| `r_swim` | 1.03 | **Estimate** — swimming decays more slowly with distance than running | **Low** | Back-testing swim splits |
+| `d_prime_m` (`D′`) | 15.0 m | Population-typical swimming `D′`. **Estimate** | **Low — but low-stakes** | See sensitivity note below |
+| `css_validity_min` | 30.0 min | Conventional upper duration of the critical-speed model's validity | **Low-Med** | A study of CS-model validity limits in swimming |
+| `k_swim_dur` | 0.0012 per min | **Estimate**, calibrated so a 3800 m swim lands at ≈ CSS + 4 s·(100 m)⁻¹ | **Low** | Back-testing swim splits — the single most useful swim calibration |
 | `wetsuit_factor` | 0.955 | Chatard & Wilson: ~6–7% over 400 m for triathletes, 14% drag reduction at 1.25 m·s⁻¹; discounted for sustained long-course pace | Med | Back-testing; the 400 m figure is a max-effort short-distance result |
 | `ow_overhead['first']` | 12.0 s·(100 m)⁻¹ | Coaching consensus 5–15 s·(100 m)⁻¹; sighting alone 3–5 | **Low** | Back-testing |
 | `ow_overhead['improver']` | 8.0 | as above | **Low** | as above |
 | `ow_overhead['experienced']` | 5.0 | as above | **Low** | as above |
+
+**`D′` sensitivity is low, which is why a population default is acceptable.** Across the plausible range
+`D′` ∈ [10, 25] m, planned pace moves by 0.4% at 3800 m and 2.0% at 750 m — an order of magnitude smaller
+than the constants it sits beside. It matters most where it matters least, on the short-course distances
+that are out of primary scope.
+
+**`D′` is nonetheless recoverable, and should be.** It falls straight out of the test the athlete already
+performed: with two time-trial points, `D′ = 400 − CSS·t₄₀₀ = 200 − CSS·t₂₀₀`. The product currently stores
+only the derived CSS and discards `t₄₀₀`/`t₂₀₀`. Persisting the raw pair would replace this estimate with a
+measurement at zero cost to the athlete. That is a fifth candidate input beyond the four specified in §F;
+it is **not** added here because it was not requested, and it is recorded as **§D-12** instead.
 
 **Wetsuit legality** — Ironman competition rules, High confidence:
 
@@ -1411,14 +1721,22 @@ well — a known, directional, documented bias rather than a hidden one.
 **Worked example** — Athlete M, 3800 m, water 22.5 °C, `improver`:
 
 ```
-D_dist_swim = (3800 / 2000) ^ 0.03 = 1.9 ^ 0.03 = exp(0.03 × 0.641854) = 1.019442
-base        = 105 × 1.019442                      = 107.041 s·(100 m)⁻¹
+pace_max    = 105 × (3800 − 15) / 3800
+            = 105 × 0.9960526                     = 104.5855 s·(100 m)⁻¹
+T_max_est   = 3800 × 104.5855 / 100 / 60          =  66.237 min
+excess_min  = max(0, 66.237 − 30.0)               =  36.237 min
+pace_dur    = 104.5855 × (1 + 0.0012 × 36.237)
+            = 104.5855 × 1.0434844                = 109.1334 s·(100 m)⁻¹
+                                                    (= CSS + 4.13 s, as expected)
 22.5 °C ≤ 24.5 → wetsuit legal
-wetsuit     = 107.041 × 0.955                     = 102.225
-+ overhead  = 102.225 + 8.0                       = 110.225
+wetsuit     = 109.1334 × 0.955                    = 104.2224
++ overhead  = 104.2224 + 8.0                      = 112.2224
 water_temp_adj(22.5) = 0.8 × max(0, 18 − 22.5) + 1.0 × max(0, 22.5 − 26) = 0
-swim time   = 38 × 110.225 = 4188.6 s             = 69.81 min
+swim time   = 38 × 112.2224 = 4264.45 s           =  71.07 min
 ```
+
+The withdrawn model gave 69.81 min for this athlete. The correction is **+1.27 min**, and it propagates into
+every gate ETA and the projected total below.
 
 ### 4.5 Transitions
 
@@ -1541,11 +1859,23 @@ fluid_ml_per_hr, binding = bind([
 | `replace_frac` | 0.75 | Targets ≤2% body-mass loss rather than full replacement; ACSM cautions against both under- and over-drinking | Med | |
 | `gastric_cap_ml` | 1000 mL·h⁻¹ | Gastric emptying maximum ~15–20 mL·min⁻¹ | Med | |
 
-**`W_sweat_ref` is a real problem and should be fixed in the product, not papered over here.** The
-`sweat_rate` constraint has no reference condition attached, so the model has to guess what conditions it
-was measured in. An athlete who sweat-tested on a hot day and one who tested indoors in winter get the same
-treatment from identical stored values. Adding `measured_at_temp_c` to the constraint row would remove the
-guess. See §D-2.
+**`sweat_rate.measured_at_temp_c` (new input, §F.4) removes the guess.** When supplied, the athlete's own
+test condition replaces the assumed reference, converted to the WBGT axis the scaler works on:
+
+```
+W_sweat_ref = wbgt(measured_at_temp_c, sweat_test_default_rh, sweat_test_default_conditions)
+```
+
+with `sweat_test_default_rh = 55%` and `sweat_test_default_conditions = 'partly_cloudy'`, because a sweat
+test records a temperature but almost never a humidity or a sky state. Those two defaults are themselves
+estimates and are config rows; the gain over the status quo is that the *temperature* — the term that
+dominates — becomes a measurement instead of an assumption.
+
+**When absent**, fall back to `w_sweat_ref = 15.0 °C WBGT` and add `sweat_rate.measured_at_temp_c` to
+`SolveOutput.assumed_fields`, so the UI can mark the fluid and sodium numbers as resting on an assumed test
+condition. This matters more than it looks: an athlete who sweat-tested on a hot day and one who tested
+indoors in winter currently get identical treatment from identical stored values, and the resulting fluid
+plan can differ by 20% or more between those two readings of the same number.
 
 Note that `replace_frac = 0.75` is deliberately **not** 1.0. Full sweat replacement over a 9-hour race is
 both unachievable (it would exceed gastric capacity) and dangerous (exercise-associated hyponatraemia is a
@@ -1623,7 +1953,9 @@ by more than that, a rounded value has leaked into a computation — exactly the
 ### 5.6 Worked example — Athlete M, `C-TRAM`, hot
 
 ```
-duration_hours = (406.11 + 270.57) / 60 = 11.278 h        (bike + run moving time)
+duration_hours = (406.11 + 270.57) / 60 = 11.278 h        (bike + run moving time;
+                                                             the swim is excluded, so §4.4's
+                                                             correction does not move this)
 
 CARBOHYDRATE
   L(11.278) = 90 g·h⁻¹                                     (t > 4)
@@ -1729,7 +2061,7 @@ goggles (reason: a goggle failure ends a first-timer's race), written transition
 
 ```
 Event: 2026-09-19, start 07:00 local, lat 39.85 N, lng 3.12 E, UTC+2
-projected_minutes = 761.5
+projected_minutes = 762.8
 
 ARM COOLERS
   forecast.temp_c = 31.0 > 28.0  → INCLUDED
@@ -1738,9 +2070,10 @@ ARM COOLERS
 HEAD TORCH
   civil dusk (§I.1.7)      = 20:17 local
   threshold = dusk − 15min = 20:02 local
-  finish    = 07:00 + 761.5 min = 07:00 + 12:41.5 = 19:41 local
-  19:41 > 20:02 ?  NO  → NOT INCLUDED
-  (this athlete would need projected_minutes > 782.2 to trigger the torch — a 20.7 min margin)
+  finish    = 07:00 + 762.8 min = 07:00 + 12:42.8 = 19:43 local
+  19:43 > 20:02 ?  NO  → NOT INCLUDED
+  (this athlete would need projected_minutes > 782.2 to trigger the torch — a 19.4 min margin.
+   G10-NIGHT uses athlete A-X at 870.6 min, which clears the threshold by 88 min.)
 
 SALT CAPSULES, bike special needs
   sodium_mg_per_hr = 1094.4,  bike_hours = 406.11/60 = 6.7685
@@ -1749,7 +2082,7 @@ SALT CAPSULES, bike special needs
   reason: 'sodium_loss' — "900 mg·L⁻¹ sweat sodium at 1.52 L·h⁻¹ over 6.8 h on the bike."
 ```
 
-The head-torch case is instructive: the athlete finishes 20.7 minutes inside the threshold, so a forecast that
+The head-torch case is instructive: the athlete finishes 19.4 minutes inside the threshold, so a forecast that
 slowed them by half an hour would add a head torch to the bag. That is exactly the kind of change the drift
 mechanism should surface, and it is computed from the sun's actual position rather than from a guess about
 when it gets dark in September.
@@ -1813,6 +2146,7 @@ without the model becoming incoherent. They are not validation bounds.
 | `crr['smooth_asphalt']` | 0.0040 | — | 0.0027–0.0045 | Bike split |
 | `crr['typical_road']` | 0.0050 | — | 0.0040–0.0055 | Bike split (default) |
 | `crr['rough_chipseal']` | 0.0065 | — | 0.0050–0.0080 | Bike split (≈8 min per 180 km vs default) |
+| `pressure_hpa_valid` | 870–1085 | hPa | — | Range outside which `pressure_hpa` is treated as absent (§I.1.1) |
 
 ### `solver/tables/heat_curve.py`
 
@@ -1844,7 +2178,10 @@ without the model becoming incoherent. They are not validation bounds.
 
 | Key | Default | Unit | Range | Affects |
 |---|---|---|---|---|
-| `if_ref[distance][level]` | 12 values, §4.2.1 | — | ±0.05 | Bike target power — the biggest single lever |
+| `if_ref['full'][level]` | 0.65 / 0.70 / 0.75 | — | ±0.05 | **Primary scope.** Bike target power — the biggest single lever |
+| `if_ref['half'][level]` | 0.72 / 0.78 / 0.83 | — | ±0.05 | **Primary scope, contested** — see E-13; ±8 min over 90 km |
+| `if_ref['olympic'][level]` | 0.80 / 0.85 / 0.88 | — | ±0.05 | ⚠️ **Out of primary scope — extrapolated, unvalidated** (§0.1b) |
+| `if_ref['sprint'][level]` | 0.85 / 0.90 / 0.95 | — | ±0.05 | ⚠️ **Out of primary scope — extrapolated, unvalidated** (§0.1b) |
 | `risk_adj['conservative'/'balanced'/'aggressive']` | −0.03 / 0.00 / +0.03 | — | ±0.05 | Bike target power |
 | `if_max_feas['first'/'improver'/'experienced']` | 0.75 / 0.80 / 0.85 | — | ±0.05 | Barrier feasibility ceiling |
 | `if_grid_step` | 0.005 | — | 0.002–0.01 | Stage 3 resolution vs cost |
@@ -1875,8 +2212,9 @@ without the model becoming incoherent. They are not validation bounds.
 
 | Key | Default | Unit | Range | Affects |
 |---|---|---|---|---|
-| `d_ref_swim` | 2000 | m | 1500–2500 | Swim distance decay anchor |
-| `r_swim` | 1.03 | — | 1.00–1.06 | Swim pace vs distance |
+| `d_prime_m` | 15.0 | m | 8–30 | Swim pace at all distances (low sensitivity, §4.4.3) |
+| `css_validity_min` | 30.0 | min | 20–45 | Onset of the swim durability term |
+| `k_swim_dur` | 0.0012 | per min | 0.0005–0.0025 | Swim pace beyond the CS validity window |
 | `wetsuit_factor` | 0.955 | — | 0.93–0.98 | Swim pace |
 | `ow_overhead['first'/'improver'/'experienced']` | 12.0 / 8.0 / 5.0 | s·(100 m)⁻¹ | 3–18 | Swim pace |
 | `wetsuit_legal_max_c` | 24.5 | °C | fixed (rule) | Wetsuit legality |
@@ -1904,7 +2242,9 @@ without the model becoming incoherent. They are not validation bounds.
 | `carb_hard_max` | 120 | g·h⁻¹ | 100–120 | Override ceiling |
 | `glucose_fructose_ratio` | 2.0 | — | 1.5–2.5 | Product selection |
 | `k_sweat` | 0.030 | per °C WBGT | 0.010–0.060 | Fluid and sodium |
-| `w_sweat_ref` | 15.0 | °C WBGT | 10–20 | Fluid and sodium |
+| `w_sweat_ref` | 15.0 | °C WBGT | 10–20 | Fluid and sodium — **fallback only**, used when `measured_at_temp_c` absent |
+| `sweat_test_default_rh` | 55 | % | 40–70 | Converting `measured_at_temp_c` to the WBGT axis (§5.2) |
+| `sweat_test_default_conditions` | `partly_cloudy` | — | — | As above |
 | `replace_frac` | 0.75 | — | 0.60–0.90 | Fluid |
 | `gastric_cap_ml` | 1000 | mL·h⁻¹ | 800–1200 | Fluid ceiling |
 | `replace_frac_na` | 0.80 | — | 0.5–1.0 | Sodium |
@@ -2004,18 +2344,25 @@ Barriers: `swim_exit 70`, `bike_cutoff 330`, `finish 510`.
 
 ### B.2 Athletes
 
-| | `A-M` | `A-E` | `A-F` | `A-T` | `A-X` |
-|---|---|---|---|---|---|
-| `level` | improver | experienced | first | first | first |
-| `swim_threshold_pace` (s·100m⁻¹) | 105 | 88 | 145 | 134 | 150 |
-| `bike_threshold_power` (W) | 224 | 285 | 155 | 175 | 150 |
-| `run_threshold_pace` (s·km⁻¹) | 282 | 240 | 400 | 365 | 420 |
-| `weight` (kg) | 75 | 68 | 82 | 77 | 84 |
-| `sweat_rate` (L·h⁻¹) | 1.1 | 1.4 | 0.9 | 1.0 | 0.9 |
-| `sodium_loss` (mg·L⁻¹) | 900 | 1250 | 700 | 800 | 700 |
-| `gut_carb_ceiling` (g·h⁻¹) | 75 | 95 | 50 | 55 | 50 |
-| `caffeine_tolerance` (mg) | 300 | 400 | 150 | 200 | 150 |
-| `bike_setup` | tt_bike / standard | tt_bike / aero | road_clipons / standard | road_clipons / standard | road_clipons / standard |
+| | `A-M` | `A-E` | `A-F` | `A-T` | `A-X` | `A-Y` |
+|---|---|---|---|---|---|---|
+| `level` | improver | experienced | first | first | first | first |
+| `swim_threshold_pace` (s·100m⁻¹) | 105 | 88 | 145 | **133** | **122** | **150** |
+| `bike_threshold_power` (W) | 224 | 285 | 155 | **176** | **195** | **150** |
+| `run_threshold_pace` (s·km⁻¹) | 282 | 240 | 400 | **363** | **325** | **420** |
+| `weight` (kg) | 75 | 68 | 82 | 77 | **73** | 84 |
+| `sweat_rate` (L·h⁻¹) | 1.1 | 1.4 | 0.9 | 1.0 | 0.9 | 0.9 |
+| `sodium_loss` (mg·L⁻¹) | 900 | 1250 | 700 | 800 | 700 | 700 |
+| `gut_carb_ceiling` (g·h⁻¹) | 75 | 95 | 50 | 55 | 50 | 50 |
+| `caffeine_tolerance` (mg) | 300 | 400 | 150 | 200 | 150 | 150 |
+| `bike_setup` | tt_bike / standard | tt_bike / aero | road_clipons / standard | road_clipons / standard | road_clipons / standard | road_clipons / standard |
+| Role | baseline | short course | infeasible | tight margin | night finish | earliest-miss |
+
+**`A-T`, `A-X` and `A-Y` were retuned or introduced in this revision.** `A-T` moved because the corrected
+swim model (§4.4) shifted every projected total; at its previous numbers it was no longer inside the `tight`
+band. `A-X` was **replaced outright**: its previous profile turned out to be *infeasible* on `C-TRAM`, so
+`G10-NIGHT` never reached Stage 6 and tested nothing at all — the case asserted a head torch on a plan that
+was never produced. `A-Y` is new, for `G14`.
 
 Constraint `source` values, fixed per case so the provenance-invariance CI test has something to permute:
 `A-M` = `tested` except `weight: measured`, `sweat_rate: estimated`, `sodium_loss: estimated`,
@@ -2023,40 +2370,46 @@ Constraint `source` values, fixed per case so the provenance-invariance CI test 
 
 ### B.3 Forecasts
 
-| Id | temp_c | humidity | wind | conditions | water_temp |
-|---|---|---|---|---|---|
-| `F-MILD` | 22.0 | 60 | 3.0 | partly_cloudy | 21.0 |
-| `F-HOT` | 31.0 | 55 | 3.0 | clear | 22.5 |
-| `F-COOL` | 14.0 | 70 | 5.0 | cloudy | 15.5 |
-| `F-WARMWATER` | 27.0 | 65 | 2.0 | clear | 26.0 |
+| Id | temp_c | humidity | wind | conditions | water_temp | `pressure_hpa` | `cloud_cover_pct` |
+|---|---|---|---|---|---|---|---|
+| `F-MILD` | 22.0 | 60 | 3.0 | partly_cloudy | 21.0 | 1015.0 | 40 |
+| `F-HOT` | 31.0 | 55 | 3.0 | clear | 22.5 | 1013.0 | 5 |
+| `F-COOL` | 14.0 | 70 | 5.0 | cloudy | 15.5 | 1008.0 | 80 |
+| `F-WARMWATER` | 27.0 | 65 | 2.0 | clear | 26.0 | 1012.0 | 10 |
+| `F-MILD-BARE` | 22.0 | 60 | 3.0 | partly_cloudy | 21.0 | *(omitted)* | *(omitted)* |
 
-### B.4 The twelve cases
+`F-MILD-BARE` is `F-MILD` with both new optional fields absent, for the `assumed_fields` case.
 
-`schema_version = 1` throughout. `goal.goal_minutes = None`, `goal.risk = balanced`,
+### B.4 The fifteen cases
+
+`schema_version = 2` throughout (§F.1). `goal.goal_minutes = None`, `goal.risk = balanced`,
 `goal.first_timer = (level == 'first')`, `options = {carb_override: None, night_flag: false,
 preview_only: false}` unless stated. Event date `2026-09-19`, `start_time_local 07:00` unless stated.
+**Every case sets `bike_setup` explicitly** so that `assumed_fields` is empty except in `G15`, which exists
+to exercise the fallback path on its own.
 
 | Id | Course | Athlete | Forecast | Overrides | Exercises |
 |---|---|---|---|---|---|
-| `G01-FULL` | `C-TRAM` | `A-M` | `F-MILD` | — | Full distance, baseline |
-| `G02-HALF` | `C-HALF` | `A-M` | `F-MILD` | — | Half distance; `if_ref` half row |
-| `G03-OLYMPIC` | `C-OLY` | `A-E` | `F-MILD` | — | Olympic; run threshold clamp active |
-| `G04-SPRINT` | `C-SPR` | `A-E` | `F-MILD` | — | Sprint; shortest-distance path |
-| `G05-INFEASIBLE` | `C-TRAM` | `A-F` | `F-MILD` | — | **Expect `feasibility = infeasible`**, barrier `finish`, miss ≈ 86.1 min, levers `[improve_run_pace, raise_ftp]`. Only the finish barrier is missed (swim +43.0, km 120 +33.3, bike cut-off +12.9), so "tightest" and "earliest missed" agree — chosen deliberately so this case does not depend on the §D-8 ambiguity |
-| `G06-TIGHT` | `C-TRAM` | `A-T` | `F-MILD` | — | **Expect `margin_state = tight`**, `worst_margin_minutes ≈ +5.2` at `finish`, projected ≈ 954.8 min. `binding_constraint_key = barrier:finish` via precedence rule 1 |
-| `G07-HOT` | `C-TRAM` | `A-M` | `F-HOT` | — | WBGT 27.729; bike heat clamp at top knot; run `D_heat = 1.1616`; arm coolers included |
+| `G01-FULL` | `C-TRAM` | `A-M` | `F-MILD` | — | **Primary distance.** Full-distance baseline; projected ≈ 735.3 min |
+| `G02-HALF` | `C-HALF` | `A-M` | `F-MILD` | — | **Primary distance.** `if_ref` half row; swim durability term nearly inert at 1900 m |
+| `G03-OLYMPIC` | `C-OLY` | `A-E` | `F-MILD` | — | ⚠️ Out of primary scope (§0.1b). Asserts the short-distance path runs and stays deterministic — **not** that the numbers are right. `pace_target ≥ run_threshold_pace` clamp fires |
+| `G04-SPRINT` | `C-SPR` | `A-E` | `F-MILD` | — | ⚠️ Out of primary scope. As `G03`; shortest path, CSS model gives pace *faster* than CSS |
+| `G05-INFEASIBLE` | `C-TRAM` | `A-F` | `F-MILD` | — | **Expect `feasibility = infeasible`**; `barrier = finish`, `miss_minutes ≈ 90.6`, `tightest_barrier = finish` (they coincide here). Only the finish is missed — swim +38.6, km 120 +28.9, bike cut-off +8.5. Levers `[improve_run_pace, raise_ftp]` |
+| `G06-TIGHT` | `C-TRAM` | `A-T` | `F-MILD` | — | **Expect `margin_state = tight`**, `worst_margin_minutes ≈ +6.2` at `finish`, projected ≈ 953.9 min. `binding_constraint_key = barrier:finish` via §3.5 precedence rule 1 |
+| `G07-HOT` | `C-TRAM` | `A-M` | `F-HOT` | — | WBGT 27.729; bike heat clamped at the top knot; run `D_heat = 1.1616`; arm coolers included; projected ≈ 762.8 min |
 | `G08-FIRSTTIMER` | `C-HALF` | `A-F` | `F-MILD` | `first_timer = true` | First-timer bag set; `first` level tables throughout |
-| `G09-CARBOVERRIDE` | `C-TRAM` | `A-M` | `F-MILD` | `carb_override = 95` | `overridden = true`; 95 > ceiling 75, below `carb_hard_max`; `OVER_CEILING` warning |
-| `G10-NIGHT` | `C-TRAM` | `A-X` | `F-MILD` | `start_time_local 08:00` | Projected finish past civil dusk (20:17 local); head torch present with a real `reason_constraint_key` |
-| `G11-FLAT` | `C-FLAT` | `A-M` | `F-MILD` | — | `grade_mod ≈ 1` throughout; VI ≈ 1.000; `smooth_asphalt` Crr |
-| `G12-MOUNTAIN` | `C-ALTA` | `A-E` | `F-COOL` | — | Altitude derate active (mean 980 m); `d_grade_max` clamp reachable on the run; large `grade_mod` swings |
+| `G09-CARBOVERRIDE` | `C-TRAM` | `A-M` | `F-MILD` | `carb_override = 95` | `overridden = true`; 95 > ceiling 75, below `carb_hard_max` 120; `OVER_CEILING` warning |
+| `G10-NIGHT` | `C-TRAM` | `A-X` | `F-MILD` | `start_time_local = 08:00` | Projected ≈ 870.6 min → finish 22:30 local, past civil dusk 20:17. **Feasible** (worst margin ≈ +54.8), so Stage 6 actually runs and the head torch is emitted with a real `reason_constraint_key` |
+| `G11-FLAT` | `C-FLAT` | `A-M` | `F-MILD` | — | `grade_mod ≈ 1` throughout; VI ≈ 1.000; `smooth_asphalt` Crr; gradient histogram collapses to few bins |
+| `G12-MOUNTAIN` | `C-ALTA` | `A-E` | `F-COOL` | — | Only case exercising `alt_factor` (mean 980 m); `d_grade_max` clamp reachable on the run; large `grade_mod` swings; widest gradient histogram |
+| `G13-NOWETSUIT` | `C-TRAM` | `A-M` | `F-WARMWATER` | — | **New.** Water 26.0 °C is in the permitted-but-not-award-eligible band, so the model races **without** a wetsuit and sets the warning flag. `c_warm` term active. This branch was previously untested |
+| `G14-EARLIESTMISS` | `C-TRAM` | `A-Y` | `F-MILD` | — | **New, and the case that pins §3.3 / §F.5.** Two barriers missed. Expect `barrier = bike_cutoff`, `miss_minutes ≈ 10.1`; `tightest_barrier = finish`, `tightest_miss_minutes ≈ 131.8`. A regression that reverted to "tightest" would report 131.8 min at the finish and this case would fail loudly |
+| `G15-ASSUMED` | `C-TRAM` | `A-M` *(no `bike_setup`)* | `F-MILD-BARE` | `sweat_rate.measured_at_temp_c` omitted | **New.** Expect `assumed_fields = ("athlete.bike_setup", "forecast.cloud_cover_pct", "forecast.pressure_hpa", "sweat_rate.measured_at_temp_c")` — exactly those four, in that sorted order. CdA falls back to `road_clipons` + `improver` = 0.280, so the bike split differs from `G01` |
 
-**Additional coverage these twelve deliberately provide:** `G03`/`G04` exercise the
-`pace_target ≥ run_threshold_pace` clamp, which cannot fire at long distances. `G12` is the only case
-exercising `alt_factor`. `F-WARMWATER` is not used by any of the twelve and should be added as a
-thirteenth (`G13-NOWETSUIT`, `C-TRAM` × `A-M` × `F-WARMWATER`) if wetsuit-legality branching is to be
-covered — at 26.0 °C the wetsuit is permitted but not award-eligible, so the model races without it and
-sets the warning flag. That branch is otherwise untested, which is worth knowing.
+**Coverage notes.** `G01`, `G02`, `G05`, `G06`, `G07`, `G09`, `G10`, `G13`, `G14` and `G15` are all on
+primary distances and are the cases whose *numbers* matter. `G03` and `G04` are path coverage only. `G11`
+and `G12` bracket the terrain range and are the cases that would catch a regression in the §1.1 gradient
+histogram — a bug there is invisible on flat courses and severe on `C-ALTA`.
 
 **Determinism tests that accompany the golden files:**
 
@@ -2075,7 +2428,20 @@ sets the warning flag. That branch is otherwise untested, which is worth knowing
 
 ## §C Validation protocol
 
-### C.1 Method
+### C.1 Scope of validation
+
+**Back-testing covers full distance and 70.3 only** (§0.1b). Olympic and Sprint are out of primary scope,
+their intensity bands are extrapolated rather than sourced, and **no error target is set for them below.**
+Their golden cases assert that the code paths run and stay deterministic; they assert nothing about
+accuracy. If short-course ever becomes a primary distance, `if_ref['olympic']` and `if_ref['sprint']` need
+sourcing before, not after.
+
+Within the two primary distances, get **full distance validated first**. It has the longest legs, so it has
+the most leverage on every constant, and three of the model's weakest terms — the bike heat duration gap
+(§D-1), the swim durability term (§4.4.3) and the bike-run coupling (§4.3.1) — are all near-inert at 70.3
+and dominant at full distance.
+
+### C.2 Method
 
 Back-test against real races where the athlete's pre-race constraints, the course, the conditions and the
 actual splits are all known. Three to four races is enough for a first pass; the requirement is that each
@@ -2090,7 +2456,7 @@ being judged in hindsight) — solve, and compare leg by leg.
 5% slow is not a good model; it is two errors that happen to cancel, and it will not cancel for the next
 athlete.
 
-### C.2 Acceptable error
+### C.3 Acceptable error
 
 | Scope | Target | Rationale |
 |---|---|---|
@@ -2108,7 +2474,7 @@ will make a cut-off is more useful than a model that is 2% accurate and occasion
 needs moving. Three races scattered ±5% with no mean offset is irreducible athlete variability and should
 not be tuned away — tuning to it is overfitting to three data points.
 
-### C.3 Diagnostic table — symptom to constant
+### C.4 Diagnostic table — symptom to constant
 
 This is the table to use when a back-test disagrees. It maps an *observed error pattern* to the *specific
 constant* most likely responsible, ordered so that the first candidate is the one with both the largest
@@ -2131,7 +2497,8 @@ leverage and the weakest evidence.
 | Run too slow on hilly courses | `alpha_up` too high | `run_model.py` | Decrease | Minetti coefficients themselves are near-certainly right (§4.3.2) |
 | Swim consistently slow by 5–12% | `ow_overhead[level]` too high | `swim_model.py` | Decrease | Also the first place drafting shows up — see §D-11 |
 | Swim slow **only in wetsuit races** | `wetsuit_factor` too high | `swim_model.py` | Decrease | 0.955 is discounted from a 400 m result; long-course may warrant more |
-| Swim error scales with **distance** | `r_swim` or `d_ref_swim` wrong | `swim_model.py` | Adjust `d_ref_swim` first | `d_ref_swim` is the CSS interpretation and is the more likely culprit |
+| Swim error scales with **distance** | `k_swim_dur`, then `css_validity_min` | `swim_model.py` | Adjust `k_swim_dur` first | It carries almost all the distance dependence; `d_prime_m` is too insensitive to be the cause (§4.4.3) |
+| Swim slow at full distance, right at 70.3 | `k_swim_dur` too low | `swim_model.py` | Increase | The durability term only engages past ~30 min, so it is nearly inert at 70.3 |
 | Transitions consistently wrong | `t1_base` / `t2_base` | `transitions.py` | Set from data | **Fix this first.** It is readable straight off results pages with no modelling assumptions |
 | Fluid plan unachievable in practice | `replace_frac` or `gastric_cap_ml` | `fuelling.py` | Decrease | Check whether the gastric cap was binding (it usually is in heat) |
 | Sodium plan implausible (too high) | Unit confusion: concentration vs rate | — | **Bug, not a constant** | See the §5.3 warning |
@@ -2139,7 +2506,7 @@ leverage and the weakest evidence.
 | Head torch appears/disappears wrongly | Timezone offset or longitude sign | — | **Bug, not a constant** | §I.1.7; test both hemispheres |
 | Every leg slow by a similar % at altitude | `alt_a2` | `heat_curve.py` | Adjust | Sources span 6.3–9.2% per 1000 m; 7.0 is a compromise |
 
-### C.4 Results table
+### C.5 Results table
 
 *To be completed. Leave the expectations empty until real races are entered — a pre-filled expectation is
 an invitation to tune toward it.*
@@ -2180,55 +2547,55 @@ an invitation to tune toward it.*
 
 ## §D Open questions
 
-Eleven places where the model is knowingly incomplete. Each is written down rather than filled with a
-plausible number, per the "do not invent physiology" rule.
+Five of the original eleven are now closed. What remains is written down rather than filled with a plausible
+number, per the "do not invent physiology" rule.
 
-**D-1 — Bike heat curve has no duration term.** Peiffer's 40 km time trial is ~60 minutes; a full-distance
-bike leg is 4.5–7 hours, over which thermal strain accumulates. The curve almost certainly under-states the
-decrement for long-course racing, and there is no published dose–response over that duration to correct it
-with. *Impact:* bike splits optimistic in heat, growing with race length. *What would close it:* a study of
-sustained-power decrement over 4+ hours at controlled WBGT, or back-testing across race distances.
+### Closed since the first draft
 
-**D-2 — `sweat_rate` has no reference condition.** The constraint stores a rate but not the conditions it
-was measured in, so `w_sweat_ref = 15 °C` is a guess about the athlete's test day. *What would close it:* a
-`measured_at_temp_c` column on the constraint row. **This is a product change and is recommended.**
+| # | Was | Closed by |
+|---|---|---|
+| **D-2** | `sweat_rate` had no reference condition | **`sweat_rate.measured_at_temp_c`** (§F.4). Fallback to 15 °C WBGT remains, but is now declared in `assumed_fields` |
+| **D-3** | Barometric pressure not in the forecast | **`forecast.pressure_hpa`** (§F.3). ISA fallback remains, declared |
+| **D-4** | `conditions` categorical, so the globe offset stepped | **`forecast.cloud_cover_pct`** (§F.3). The environment model is now continuous in all three of temperature, humidity and cloud when the field is supplied |
+| **D-7** | Threshold definitions unconfirmed | **Decided** (§2): run = one-hour pace, swim = CSS from the 400/200 pair. §2.5 specifies all three entry routes; §4.4 was rewritten because CSS is an asymptote and the previous Riegel anchoring was wrong by ~2.3% at full distance |
+| **D-8** | Infeasibility reported the tightest barrier | **Changed to earliest missed** (§3.3), with `tightest_barrier` retained for diagnostics. Contract change specified in §F.5 |
 
-**D-3 — Barometric pressure is not in the forecast.** §I.1.1 uses the standard atmosphere at the course
-elevation. Real pressure varies ±4%, which is ±4% on the aerodynamic term — comparable to the entire heat
-effect. *What would close it:* `pressure_hpa` on `ForecastSnapshot`. Near-zero cost; every forecast provider
-supplies it.
+### Still open
 
-**D-4 — `conditions` is categorical, so the globe offset is a step.** A forecast moving `clear` →
-`partly_cloudy` moves WBGT 0.46 °C and mid-level run pace ~1.5 s·km⁻¹ discontinuously. The function is
-already written as an interpolation in cloud fraction; it needs a numeric input. *What would close it:*
-`cloud_cover_pct` on `ForecastSnapshot`.
+**D-1 — Bike heat curve has no duration term. HIGHEST-PRIORITY OPEN GAP.** Peiffer's 40 km time trial is
+~60 minutes. **Both of our primary distances have bike legs far longer than that** — roughly 2.5 h at 70.3
+and 4.5–7 h at full distance — and thermal strain accumulates over exactly that span. The curve therefore
+under-states the decrement for the only two race formats we sell, and **the bias grows with race length**:
+smallest where it is least consequential and largest at full distance in heat, which is the single scenario
+where an optimistic bike split does the most damage, because it also feeds the over-biking term into an
+already heat-degraded run.
+
+The flat clamp above WBGT 25.05 (§I.1.4) compounds this: the duration gap and the refusal to extrapolate
+push in the same optimistic direction, and neither corrects the other.
+
+*Impact:* bike splits optimistic in heat, error growing with race length; downstream, run splits optimistic
+too. *What would close it:* a study of sustained-power decrement over 4+ hours at controlled WBGT — which I
+do not believe exists — or, practically, back-testing full-distance hot races and fitting a duration term
+empirically. **Until then, treat hot full-distance projections as the model's least trustworthy output**, and
+prefer the conservative side of any `if_ref` tuning for those races.
 
 **D-5 — Wind is not in the WBGT calculation.** Wind substantially reduces globe temperature and increases
 evaporative cooling, so a hot windy day is meaningfully less stressful than a hot still day. The model uses
-wind for aerodynamics only. *Impact:* over-states heat cost on windy days. *What would close it:* a full
-WBGT model with a wind term, at the cost of more assumed constants.
+wind for aerodynamics only. *Impact:* over-states heat cost on windy days — the opposite sign to D-1, but
+they do not reliably cancel. *What would close it:* a full WBGT model with a wind term, at the cost of more
+assumed constants.
 
 **D-6 — Altitude acclimatisation is not modelled.** `alt_factor` applies the same derate to a Colorado
 resident and a sea-level athlete arriving two days before. The effect is large and highly individual, and
 the product captures nothing about where the athlete lives or when they arrive. *What would close it:*
 either new inputs, or an explicit statement in the UI that mountain projections assume no acclimatisation.
-
-**D-7 — The definition of `run_threshold_pace` must be confirmed.** This model treats it as *one-hour race
-pace* (§2.3), consistent with FTP. If the onboarding estimator means 10 km pace or lactate-threshold pace,
-the Riegel anchor is wrong and every run projection is off by several percent in a direction that depends
-on the athlete. *This should be checked before implementation, not after.* The same question applies to
-`swim_threshold_pace`/CSS via `d_ref_swim`.
-
-**D-8 — Infeasibility reports the tightest barrier, not the earliest missed one.** Per contract. Because
-timing errors accumulate, the finish will almost always be tightest, so an athlete who will be pulled at the
-bike cut-off is told about the finish. `G05-INFEASIBLE` was constructed to avoid depending on this, but the
-ambiguity is real. *Recommendation:* report the earliest missed barrier, keeping "tightest" for
-`worst_margin_minutes`. This is a one-line change and a contract question, not a modelling one.
+Low urgency — no currently seeded course exceeds 1500 m except `C-ALTA`.
 
 **D-9 — Walking is not modelled.** Above `d_grade_max` (≈ +13%) the model clamps rather than switching to a
 walking cost curve, and long-course athletes routinely walk both steep pitches and aid stations. Minetti
 gives a walking polynomial, so the physiology exists; what is missing is a defensible rule for *when* an
-athlete switches. *Impact:* steep run courses under-predicted; aid-station walking absent everywhere.
+athlete switches. *Impact:* steep run courses under-predicted; aid-station walking absent everywhere, which
+at full distance is plausibly several minutes across 20 stations.
 
 **D-10 — Water temperature's direct effect on swim speed in the legal range is unstudied.** `c_cold` and
 `c_warm` are placeholders producing a small, monotonic, correctly-signed effect. Everything I could find on
@@ -2239,19 +2606,52 @@ solver cannot know whether an athlete will find feet, and modelling it would mea
 consequence is a known directional bias: swim projections are slightly slow for strong swimmers who draft
 well. Documented rather than hidden.
 
+**D-12 — `D′` is estimated when it is recoverable (new).** §4.4 needs the swimmer's `D′`, and uses a
+population default of 15 m. The true value falls straight out of the test the athlete already performed:
+`D′ = 400 − CSS·t₄₀₀ = 200 − CSS·t₂₀₀`. The product computes CSS from `t₄₀₀`/`t₂₀₀` and then **discards
+both**. Persisting the raw pair would replace an estimate with a measurement at zero additional cost to the
+athlete. *Why it is not in §F:* it was not among the four inputs requested, and §4.4.3 shows the sensitivity
+is genuinely low (0.4% at 3800 m). It is the obvious fifth candidate.
+
+**D-13 — Short-course intensity bands are unsourced (new, from the §0.1b scope review).** `if_ref['olympic']`
+and `if_ref['sprint']` are extrapolations, not findings. They are out of primary scope so this is not
+blocking, but it should be closed before short-course is ever marketed on the same accuracy claim as full
+and 70.3 — and closing it likely means original work, since short-course racing is drafting-legal and the
+tactical reality is not represented anywhere in this model.
+
 ---
 
 ## §E Source verification checklist
 
 Per §0.2, **no constant in this document was verified against primary full text**, because the research
-environment's egress policy blocked every publisher host. The list below is ordered by how much damage a
-wrong value would do. It is roughly two hours of library access.
+environment's egress policy blocked every publisher host. The checklist is banded by consequence, not by
+convenience. Roughly two hours of library access covers all of it; **Tier 1 alone is about forty minutes and
+is the part that must happen before implementation.**
+
+### Tier 1 — do these before writing solver code
+
+Both items can change plan outputs on a **primary** distance by more than the width of the `clear`/`tight`
+margin band.
 
 | # | Verify | Source | If wrong |
 |---|---|---|---|
-| **E-1** | Stull wet-bulb coefficients, all six digits, and that `atan` is in radians | Stull 2011, *J Appl Meteor Climatol* 50:2267–2269 | **Every heat number in the model is wrong.** Highest priority |
-| **E-2** | Peiffer's **laboratory humidity**, and the four power values | Peiffer & Abbiss 2011, *IJSPP* 6(2):208–220 | Shifts the whole bike heat curve and the §0.7 reconciliation |
+| **E-1** | Stull wet-bulb coefficients, all six digits, and that `atan` is in radians | Stull 2011, *J Appl Meteor Climatol* 50:2267–2269 | **Every heat number in the model is wrong** — both curves are expressed on the WBGT axis this feeds |
+| **E-13** | Allen & Coggan's stated **70.3 intensity-factor range** | *Training and Racing with a Power Meter* | 70.3 is a **primary distance** and we sit on the low side (0.78 vs a cited 0.83–0.87) **by assumption**. Worth ~8 min over 90 km — a third of the entire margin band — and it propagates into the run through the over-biking term. Promoted from Tier 3 on the §0.1b scope review |
+
+### Tier 2 — before back-testing
+
+Wrong values here will be mistaken for model error and tuned around, corrupting the §C.4 diagnosis.
+
+| # | Verify | Source | If wrong |
+|---|---|---|---|
+| **E-2** | Peiffer's **laboratory humidity**, and the four power values | Peiffer & Abbiss 2011, *IJSPP* 6(2):208–220 | Shifts the whole bike heat curve and the §0.7 reconciliation. Compounds with D-1 |
 | **E-3** | Ely's quadratic model coefficients, and the exact "10% for a 3-hour marathoner over WBGT 10→25" figure | Ely et al. 2007, *MSSE* | The run heat curve's anchor and `run_heat_exponent` |
+| **E-11** | Riegel 1.06 and Vickers & Vertosick's marathon finding | Riegel 1977; Vickers & Vertosick 2016 | Run distance decay **and** the §2.5.2 threshold conversion, which uses the same exponent |
+
+### Tier 3 — before launch
+
+| # | Verify | Source | If wrong |
+|---|---|---|---|
 | **E-4** | `F_w = 0.0044 m²`, wheel-bearing `91 + 8.7v` mW, `η = 0.977` | Martin et al. 1998, *J Appl Biomech* 14(3):276–291 | Small (≈2% of bike power total) but unverified |
 | **E-5** | Minetti running polynomial coefficients | Minetti et al. 2002, *J Appl Physiol* 93:1039–1046 | Run gradient handling. **Partially self-verified** — the polynomial reproduces two of the paper's own reported measurements to within 1 SD (§4.3.2), so confidence here is higher than the others |
 | **E-6** | Carbohydrate duration bands and the 60 g·h⁻¹ SGLT1 figure | Jeukendrup 2014, *Sports Med* 44(S1):S25–S33 | Fuelling targets. Corroborated across several independent summaries, so lower risk |
@@ -2259,17 +2659,283 @@ wrong value would do. It is roughly two hours of library access.
 | **E-8** | ACSM 0.5–0.7 g·L⁻¹ sodium figure | ACSM Position Stand, *Exercise and Fluid Replacement*, 2007 | Sodium floor |
 | **E-9** | Sweat sodium 10–90 mmol·L⁻¹ range | Baker 2017, *Sports Med* 47:1391–1409 | Plausibility range only |
 | **E-10** | 3–6 mg·kg⁻¹ caffeine and the 60-min timing | Guest et al. 2021, ISSN Position Stand, *JISSN* | Caffeine dose |
-| **E-11** | Riegel 1.06 and Vickers & Vertosick's marathon finding | Riegel 1977; Vickers & Vertosick 2016 | Run distance decay |
 | **E-12** | Wetsuit temperature thresholds against the **current season's** Ironman rules | Ironman competition rules | These change; they are rules, not physics, and should be re-checked annually |
-| **E-13** | Allen & Coggan's stated 70.3 intensity-factor range | *Training and Racing with a Power Meter* | Resolves the §4.2.1 disagreement, worth ~8 min over 90 km |
+| **E-14** | Critical-speed model form and typical swimming `D′` magnitude | Critical power/speed literature | §4.4.1. The *form* is standard and I am confident in it; the population `D′` is an estimate, and §4.4.3 shows it is low-sensitivity |
+
+**Not on this list, deliberately:** `if_ref['olympic']` and `if_ref['sprint']` have no source to verify —
+they were extrapolated, they are out of primary scope (§0.1b), and verifying them means finding evidence
+that does not currently exist rather than checking a citation.
 
 Constants with **no primary source at all**, which no amount of library access will fix — they are
 estimates and are labelled as such throughout: `globe_offset_clear_c`, `globe_offset_overcast_c`,
 `cloud_fraction[*]`, `g_scale`, `alpha_dn`, `d_grade_min`, `d_grade_max`, `bike_coupling_c0`,
-`bike_coupling_c1`, `r_swim`, `d_ref_swim`, `ow_overhead[*]`, `c_cold`, `c_warm`, `k_sweat`,
+`bike_coupling_c1`, `d_prime_m`, `css_validity_min`, `k_swim_dur`, `ow_overhead[*]`, `c_cold`, `c_warm`,
+`k_sweat`,
 `w_sweat_ref`, `transition_hurry_factor`, all of `transitions.py`, `cda_level_adj[*]`,
 `crr['rough_chipseal']`, and the `first`/`improver` rows of `run_heat_pct_at_15`.
 
 That list is long, and it should be. It is the honest answer to "which of these numbers is a guess?" —
-and every one of them is a row in §A, tunable without a deploy, and a row in §C.3, with a symptom that
+and every one of them is a row in §A, tunable without a deploy, and a row in §C.4, with a symptom that
 identifies it.
+
+
+---
+
+## §F Contract changes for the build specification
+
+Everything in this appendix is a change to `RaceOS_Build_Spec.md`. It is written as **replacement text**, not
+as a description, so it can be applied directly. Five changes: four new inputs and one changed output shape.
+
+None of them alters the six stages, the stage ordering, the determinism requirement, the SLA, or the failure
+behaviour.
+
+### F.1 Summary
+
+| # | Change | Build Spec location | Breaking? |
+|---|---|---|---|
+| F.2 | `bike_setup` on `AthleteSnapshot` | Part 5 §5.1; Part 4 §4.2 | No — optional, documented fallback |
+| F.3 | `pressure_hpa`, `cloud_cover_pct` on `ForecastSnapshot` | Part 5 §5.1; Part 4 §4.4 `forecast_snapshot` | No — optional |
+| F.4 | `measured_at_temp_c` on the `sweat_rate` constraint | Part 4 §4.2 `constraints` | No — nullable column |
+| F.5 | `Infeasibility` reports earliest missed barrier; gains two fields | Part 5 §5.2 Stage 3 | **Yes** — output shape and semantics both change |
+| F.6 | `assumed_fields` on `SolveOutput` | Part 5 §5.1 | **Yes** — output shape changes |
+
+`schema_version` moves **1 → 2**. Golden files must be regenerated; §F.8 lists which cases change inputs.
+
+### F.2 `bike_setup` — new field on `AthleteSnapshot`
+
+**Rationale.** §I.2.3: CdA spans 21.2 minutes over 180 km across the plausible age-group range, against a
+20-minute `clear`/`tight` margin boundary. The assumption alone can flip a feasibility verdict.
+
+**Replacement text — Part 5 §5.1, add above `SolveInput`:**
+
+```python
+class BikePosition(str, Enum):
+    ROAD_HOODS   = "road_hoods"     # road bike, hands on the hoods
+    ROAD_DROPS   = "road_drops"     # road bike, hands in the drops
+    ROAD_CLIPONS = "road_clipons"   # road bike with clip-on aero bars
+    TT_BIKE      = "tt_bike"        # time-trial / triathlon bike with aero bars
+
+class HelmetType(str, Enum):
+    STANDARD = "standard"           # standard road helmet
+    AERO     = "aero"               # aero or time-trial helmet
+
+@dataclass(frozen=True)
+class BikeSetup:
+    position: BikePosition
+    helmet: HelmetType
+```
+
+**Replacement text — Part 5 §5.1, `AthleteSnapshot`:** add the field
+
+```python
+    bike_setup: BikeSetup | None = None   # None -> solver assumes ROAD_CLIPONS + STANDARD,
+                                          # and emits "athlete.bike_setup" in assumed_fields
+```
+
+**Replacement text — Part 4 §4.2, `users` table:** add two columns
+
+```
+bike_position bike_position_enum null,     -- road_hoods | road_drops | road_clipons | tt_bike
+bike_helmet   bike_helmet_enum   null      -- standard | aero
+```
+
+with the matching enum types in Part 4 §4.1:
+
+```sql
+create type bike_position_enum as enum ('road_hoods','road_drops','road_clipons','tt_bike');
+create type bike_helmet_enum   as enum ('standard','aero');
+```
+
+These live on `users`, not on `constraints`, because they are equipment facts rather than measured
+physiology — they have no `source`, no staleness window, and no calibration path.
+
+**Onboarding wording** (the athlete must recognise their own bike without knowing what CdA is):
+
+> **What are you riding?**
+> ○ Road bike — hands on the hoods
+> ○ Road bike — hands in the drops most of the time
+> ○ Road bike with clip-on aero bars
+> ○ Time-trial or triathlon bike
+>
+> **Helmet?**  ○ Normal road helmet   ○ Aero or TT helmet
+
+**CdA mapping** (from §I.2.3, `solver/tables/equipment.py`):
+
+| Position | Base CdA | `first` | `improver` | `experienced` |
+|---|---|---|---|---|
+| `road_hoods` | 0.325 | 0.345 | 0.325 | 0.305 |
+| `road_drops` | 0.300 | 0.320 | 0.300 | 0.280 |
+| `road_clipons` | 0.280 | 0.300 | 0.280 | 0.260 |
+| `tt_bike` | 0.255 | 0.275 | 0.255 | 0.235 |
+
+`aero` helmet subtracts a further 0.010. Result clamped to [0.19, 0.38].
+
+**Degradation when absent.** Fall back to `road_clipons` + `standard`. The fallback can sit up to 0.045 m²
+from the athlete's true value — about 15 minutes over 180 km — so supplying it later will frequently cross
+the drift thresholds. That is correct behaviour: it is new information that genuinely moves the plan.
+
+### F.3 `pressure_hpa` and `cloud_cover_pct` — new fields on `ForecastSnapshot`
+
+**Replacement text — Part 5 §5.1, `ForecastSnapshot`:** add the fields
+
+```python
+    pressure_hpa: float | None = None      # sea-level (QNH) pressure. None -> ISA standard 101325 Pa;
+                                           # emits "forecast.pressure_hpa" in assumed_fields.
+                                           # Treated as absent outside [870, 1085].
+    cloud_cover_pct: float | None = None   # 0-100. None -> categorical mapping from `conditions`;
+                                           # emits "forecast.cloud_cover_pct" in assumed_fields.
+```
+
+**Replacement text — Part 4 §4.4, `plans.forecast_snapshot jsonb` documented shape:**
+
+```json
+{
+  "temp_c": 31.0,
+  "humidity": 55,
+  "wind_speed_ms": 3.0,
+  "wind_dir_deg": null,
+  "conditions": "clear",
+  "water_temp_c": 22.5,
+  "pressure_hpa": 1013.2,
+  "cloud_cover_pct": 5
+}
+```
+
+Both new keys are nullable. The snapshot is frozen at solve time and is part of `solve_input_hash`, so
+adding them changes the hash for every plan — which is why `schema_version` bumps.
+
+**Degradation.** `pressure_hpa` absent costs up to ±4% on the aerodynamic term (§I.1.1) — comparable to the
+entire heat effect. `cloud_cover_pct` absent reintroduces the only discontinuity in the environment model
+(§I.1.3). Both are declared in `assumed_fields` rather than silently defaulted.
+
+**Adapter note that belongs in the ingest code, not the solver:** confirm whether the provider reports
+sea-level (QNH) or station pressure. Passing station pressure as sea-level pressure is wrong by roughly
+1.2% per 100 m of course elevation.
+
+### F.4 `measured_at_temp_c` — new column on `constraints`
+
+**Replacement text — Part 4 §4.2, `constraints` table:** add one column to the existing definition
+
+```
+measured_at_temp_c numeric null   -- dry-bulb air temperature (C) at which this value was measured.
+                                  -- Currently meaningful for sweat_rate only; nullable for all keys.
+```
+
+**Replacement text — Part 5 §5.1, the constraint entry inside `AthleteSnapshot`:**
+
+```python
+@dataclass(frozen=True)
+class ConstraintValue:
+    key: str
+    value: float
+    unit: str
+    source: ConstraintSource
+    measured_at_temp_c: float | None = None   # sweat_rate only; None -> solver assumes
+                                              # w_sweat_ref = 15.0 C WBGT and emits
+                                              # "sweat_rate.measured_at_temp_c" in assumed_fields
+```
+
+**Onboarding wording**, appended to the sweat-rate step:
+
+> **Roughly what temperature was it when you measured this?**
+> We use it to scale your fluid plan to race-day heat. If you skip it we'll assume mild conditions —
+> your plan will still work, we'll just mark it as an assumption.
+
+**Degradation.** Fall back to `w_sweat_ref = 15.0 °C WBGT`. This matters more than it looks: an athlete who
+sweat-tested on a hot day and one who tested indoors in winter currently get identical treatment from
+identical stored values, and the resulting fluid plan can differ by 20% or more between those two readings.
+
+### F.5 `Infeasibility` — earliest missed barrier, plus diagnostics
+
+**This is a semantic change, not only a shape change.** The reported barrier changes from the *tightest* to
+the *earliest missed*. Reasoning and the worked case are in §3.3.
+
+**Replacement text — Part 5 §5.1:**
+
+```python
+@dataclass(frozen=True)
+class Infeasibility:
+    barrier: str                      # EARLIEST missed barrier, by limit_minutes_from_start.
+                                      # This is where the athlete's race actually ends.
+    miss_minutes: float               # how far past `barrier`'s limit, rounded to 0.1
+    levers: tuple[str, ...]           # 1-2 keys, computed AT `barrier` (not at the tightest)
+    tightest_barrier: str             # smallest margin across all gates; diagnostics only
+    tightest_miss_minutes: float      # rounded to 0.1
+```
+
+**Replacement text — Part 5 §5.2, Stage 3, replacing the bullet beginning "If the tightest barrier cannot be
+met…":**
+
+> - If any barrier cannot be met even at the most conservative pacing the solver can produce, return
+>   `Infeasibility`. The reported `barrier` is the **earliest missed** barrier by
+>   `limit_minutes_from_start` — the point at which the athlete's race actually ends — not the one with the
+>   smallest margin. Because timing error accumulates, an athlete who misses a mid-race bike cut-off
+>   necessarily misses the finish by more, so reporting the smallest margin would almost always name the
+>   finish and would materially misinform the athlete. The tightest barrier is still returned, as
+>   `tightest_barrier`, for the admin blast-radius view. `levers` are computed at the reported barrier.
+> - `worst_margin_minutes` is unchanged: the minimum margin across all gates, driving `margin_state`
+>   (`clear` ≥ 20 min, `tight` 0–20 min, `bad` < 0).
+
+**Replacement text — Part 13 §13.3, the `INFEASIBLE` error `details` object:**
+
+```json
+{
+  "barrier": "bike_cutoff",
+  "miss_minutes": 10.1,
+  "levers": ["raise_ftp", "improve_run_pace"],
+  "tightest_barrier": "finish",
+  "tightest_miss_minutes": 131.8
+}
+```
+
+The user-facing `message` must be built from `barrier`/`miss_minutes`, never from the tightest pair.
+
+### F.6 `assumed_fields` — new field on `SolveOutput`
+
+**Replacement text — Part 5 §5.1, `SolveOutput`:** add the field
+
+```python
+    assumed_fields: tuple[str, ...]   # sorted dotted paths of optional inputs that were absent
+                                      # and for which the solver substituted a documented default.
+                                      # Empty tuple when every optional input was supplied.
+```
+
+Possible values: `athlete.bike_setup`, `forecast.cloud_cover_pct`, `forecast.pressure_hpa`,
+`sweat_rate.measured_at_temp_c`. Always sorted lexicographically, so it is deterministic and diffable in
+golden files.
+
+**Replacement text — Part 4 §4.4, `plans` table:** add one column
+
+```
+assumed_fields text[] not null default '{}'
+```
+
+Persisted with the plan so the UI can mark affected numbers, and so back-testing can exclude or stratify
+plans that rested on assumptions. Rationale in §0.5b.
+
+### F.7 What does *not* change
+
+Stated explicitly so a reviewer can confirm the blast radius is bounded:
+
+- The six stages, their order, and every stage invariant.
+- `SolveInput`'s top-level shape — the four new inputs are fields on existing nested objects.
+- Determinism, the `round_half_even` boundary, and the `solve_input_hash` construction *method* (the hashes
+  themselves change because the input contains new keys).
+- The 6 s SLA and the per-stage targets. The new inputs are all reads; §0.8's measurements are unaffected.
+- `Feasibility`, `Split`, `Segment`, `Gate`, `Fuelling`, `AidAction`, `Bag`, `ConstraintRef`.
+- The five-bag structure and the `reason_constraint_key` requirement.
+
+### F.8 Golden cases affected
+
+| Case | What changes |
+|---|---|
+| **All cases** | `schema_version` 1 → 2; every `SolveInput` gains four optional fields; every `SolveOutput` gains `assumed_fields`. All expected outputs must be regenerated |
+| `G01`, `G07`, `G09`, `G11`, `G12` | Swim splits change under §4.4's corrected CSS model — every downstream ETA, margin and projected total moves with them |
+| `G05-INFEASIBLE` | Miss at the finish is now **90.6 min** (was ≈86.1 under the withdrawn swim model). Earliest missed = tightest = `finish`, so the F.5 change does not alter this case's verdict |
+| `G06-TIGHT` | Athlete `A-T` retuned to `ftp 176 / rtp 363 / css 133 / wt 77`; `worst_margin_minutes ≈ +6.2`, still `tight` |
+| `G10-NIGHT` | Athlete `A-X` **replaced** — the previous profile was infeasible on `C-TRAM`, so it never reached the bag stage and tested nothing |
+| `G13-NOWETSUIT` | **New.** Exercises the wetsuit-legality branch, previously untested |
+| `G14-EARLIESTMISS` | **New.** The case that exercises F.5: earliest missed (`bike_cutoff`, 10.1 min) differs from tightest (`finish`, 131.8 min) |
+| `G15-ASSUMED` | **New.** `G01` with all four optional inputs omitted, asserting `assumed_fields` contains exactly the four paths in sorted order |
+
+---
