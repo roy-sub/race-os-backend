@@ -126,7 +126,7 @@ ALTER TABLE course_bundle_legs
 CREATE INDEX course_bundles_segments_gin ON course_bundles USING gin (segments jsonb_path_ops);
 ```
 
-Drop the `DEFAULT`s on `segments`, `waypoints` and `attribution` once the nine seeded bundles are
+Drop the `DEFAULT`s on `segments`, `waypoints` and `attribution` once the seeded bundles are
 loaded; they exist only so the migration can run against a populated table.
 
 ---
