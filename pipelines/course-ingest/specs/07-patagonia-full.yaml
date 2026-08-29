@@ -1,0 +1,46 @@
+# Patagonia Full -- lake and mountain, brutal.
+#
+# Puerto Varas on Lago Llanquihue: the brief says Chile, and the Ensenada road
+# toward Volcan Osorno supplies a real climb rather than a notional one.
+course_id: patagonia-full
+slug: patagonia-full
+name: Patagonia Full
+place: Puerto Varas, Chile
+country: CL
+timezone: America/Santiago
+distance_type: Full
+difficulty: BRUTAL
+character: lake_mountain
+tone_color: "#3a4f7a"
+
+start:
+  lat: -41.3175
+  lng: -72.9840
+
+swim:
+  water_kind: lake
+  water_name: Lago Llanquihue
+  bearing_deg: 30
+
+bike:
+  laps: 1
+  bearing_offset_deg: 60
+  character: lake_mountain
+
+run:
+  laps: 4
+  bearing_offset_deg: 200
+  character: rolling
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 0.95
+
+changelog: >-
+  Initial generated bundle. Lake swim at Puerto Varas, mountain bike leg toward
+  the Osorno flank, four-lap lakeside run.
+notes: >-
+  Brutal terrain on a tightened ladder. One of the two full-distance courses
+  where a mid-pack athlete's margins should be genuinely narrow.

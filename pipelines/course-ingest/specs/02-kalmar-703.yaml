@@ -1,0 +1,40 @@
+# Kalmar 70.3 -- flat coastal, fast.
+course_id: kalmar-703
+slug: kalmar-703
+name: Kalmar 70.3
+place: Kalmar, Sweden
+country: SE
+timezone: Europe/Stockholm
+distance_type: "70.3"
+difficulty: APPROACHABLE
+character: flat_coastal
+tone_color: "#2b6ea8"
+
+start:
+  lat: 56.6570
+  lng: 16.3620
+
+swim:
+  water_kind: sea
+  water_name: Kalmarsund
+  bearing_deg: 100
+
+bike:
+  laps: 1
+  bearing_offset_deg: 200
+  character: flat_coastal
+
+run:
+  laps: 2
+  bearing_offset_deg: 300
+  character: flat_coastal
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.05
+
+changelog: >-
+  Initial generated bundle. Flat Kalmarsund coastal bike leg, two-lap city run.
+notes: Deliberately the most generous cut-off ladder in the set -- the fast, forgiving 70.3.

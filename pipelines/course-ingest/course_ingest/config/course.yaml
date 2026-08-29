@@ -1,0 +1,158 @@
+# Course-shape configuration: nominal distances, tolerances, node spacing,
+# surface mapping, segmentation and validation thresholds.
+
+distances:
+  Full:   {swim_m: 3800,  bike_m: 180000, run_m: 42195}
+  "70.3": {swim_m: 1900,  bike_m: 90000,  run_m: 21100}
+  Olympic: {swim_m: 1500, bike_m: 40000,  run_m: 10000}
+  Sprint: {swim_m: 750,   bike_m: 20000,  run_m: 5000}
+
+# Fraction of nominal distance a leg may deviate by and still validate.
+distance_tolerance:
+  SWIM: 0.02
+  BIKE: 0.02
+  RUN:  0.02
+
+# Resampling. Part 10.2 step 4: "~10 m nodes so gradient is stable and
+# comparable across courses."
+resample:
+  node_spacing_m: 10.0
+
+elevation:
+  # Hysteresis threshold for reported ascent. A rise counts once it clears this
+  # much above the last reversal. Conventional surveyed-ascent practice, and
+  # necessary because a DEM sampled every 10 m has a vertical noise floor that
+  # an unfiltered sum would credit as climbing. Both the filtered and the raw
+  # node-series totals are emitted; nothing is hidden and nothing is smoothed.
+  gain_threshold_m: 3.0
+
+# Overture `road_surface` value -> solver `surface_quality` enum.
+# SOLVER_MODEL.md I.2.2 maps the enum to Crr. An unmapped value is a hard
+# failure: silently defaulting a surface is worth ~8 min over 180 km.
+surface_map:
+  paved: typical_road
+  asphalt: smooth_asphalt
+  concrete: smooth_asphalt
+  concrete:plates: typical_road
+  concrete:lanes: typical_road
+  chipseal: rough_chipseal
+  paving_stones: rough_chipseal
+  sett: rough_chipseal
+  cobblestone: rough_chipseal
+  metal: typical_road
+  wood: rough_chipseal
+  unpaved: rough_chipseal
+  compacted: rough_chipseal
+  fine_gravel: rough_chipseal
+  gravel: rough_chipseal
+  pebblestone: rough_chipseal
+  rock: rough_chipseal
+  dirt: rough_chipseal
+  earth: rough_chipseal
+  grass: rough_chipseal
+  grass_paver: rough_chipseal
+  ground: rough_chipseal
+  mud: rough_chipseal
+  sand: rough_chipseal
+  woodchips: rough_chipseal
+  snow: rough_chipseal
+  ice: rough_chipseal
+  salt: rough_chipseal
+  tartan: typical_road
+  rubber: typical_road
+  unknown: typical_road
+
+# Applied when a way carries no road_surface at all. Distinct from `unknown`,
+# which is Overture asserting it looked and could not tell.
+surface_absent_default: typical_road
+
+# Named segments: contiguous runs of similar gradient above a length threshold.
+segmentation:
+  # Gradient bands, in ascending order. A segment is a maximal run of nodes
+  # whose smoothed gradient falls in one band. Bounds are fractions, not %.
+  bands:
+    - {key: steep_descent, max: -0.045, terrain_desc: "Steep descent"}
+    - {key: descent,       max: -0.015, terrain_desc: "Descent"}
+    - {key: false_flat_down, max: -0.004, terrain_desc: "False flat down"}
+    - {key: flat,          max: 0.004,  terrain_desc: "Flat"}
+    - {key: false_flat_up, max: 0.015,  terrain_desc: "False flat up"}
+    - {key: climb,         max: 0.045,  terrain_desc: "Climb"}
+    - {key: steep_climb,   max: 99.0,   terrain_desc: "Steep climb"}
+  # Gradient used for banding only. The delivered node series is never smoothed
+  # (SOLVER_MODEL.md 1.2); this window exists solely to stop band flapping.
+  band_window_m: 250.0
+  min_segment_m:
+    BIKE: 1200.0
+    RUN: 700.0
+  # A segment the athlete holds one power target across cannot be the whole
+  # leg. Anything longer than this is split at even intervals, which is what
+  # gives a flat marathon per-lap segments instead of one 42 km block.
+  max_segment_m:
+    BIKE: 22000.0
+    RUN: 3000.0
+  # Segments shorter than the minimum are merged into the neighbour whose band
+  # is closer in gradient; ties merge backwards.
+  max_segments:
+    BIKE: 26
+    RUN: 20
+  naming:
+    # A segment takes the name of the OSM way carrying the most of its distance,
+    # provided that way covers at least this fraction of the segment.
+    min_name_coverage: 0.34
+    # Ways whose name matches any of these are never used as a segment name.
+    name_blocklist_patterns: ["^unnamed$", "^depuradora$", "^\\s*$"]
+    # Prefixes stripped before use, longest first.
+    strip_prefixes: []
+    # Template when a named way wins.
+    named_template: "{name}"
+    # Template when no way clears the coverage threshold.
+    unnamed_template: "{terrain_desc} {ordinal}"
+    name_source_named: OSM_WAY
+    name_source_unnamed: DERIVED_TERRAIN
+    # Laps and out-and-backs revisit the same ways, so a name can win twice.
+    # Later occurrences are numbered rather than silently duplicated.
+    duplicate_suffix_template: "{name} ({n})"
+
+swim:
+  # The swim is the one drawn leg — there are no roads in water.
+  # Shapes are buoy polygons whose perimeter equals the nominal distance.
+  shape_by_distance:
+    Full: rectangle_two_lap
+    "70.3": rectangle_one_lap
+    Olympic: triangle_one_lap
+    Sprint: triangle_one_lap
+  # Aspect ratio (long side : short side) for rectangle courses.
+  rectangle_aspect: 3.0
+  # Metres offshore the start/finish arch sits from the shoreline node.
+  shore_offset_m: 25.0
+  # The buoy polygon is densified to this spacing before resampling.
+  densify_m: 25.0
+  # Every swim node must be at least this far inside the water polygon.
+  min_water_clearance_m: 15.0
+  # How many offshore start positions to try per bearing before giving up on it.
+  # A narrow bay may not hold the course close in but will further out.
+  max_anchor_candidates: 12
+  # Swim node elevation is the water surface; taken as the DEM value at the
+  # shoreline start, held constant. A sea course is pinned to 0.0.
+  sea_level_m: 0.0
+
+validation:
+  # A road at 40% means the route jumped a valley.
+  max_abs_node_gradient: 0.30
+  # Fraction of a leg's nodes allowed to exceed the gradient bound before the
+  # bundle is rejected. Mirrors SOLVER_MODEL.md 1.3 node_clamp_fail_fraction.
+  max_gradient_outlier_fraction: 0.02
+  max_bundle_bytes: 409600
+  # A handful of nodes may exceed max_abs_node_gradient on a road cut into a
+  # hillside, which is why the fraction above is tolerated. Nothing on a road
+  # exceeds this: it is the signature of a route jumping a valley, or of a
+  # viaduct whose terrain sample is the gorge below it.
+  hard_max_node_gradient: 1.00
+  # km values are stored to three decimals, so a bound check needs one metre of
+  # slack or a leg's own finish line fails its own bound.
+  km_bound_tolerance_km: 0.0015
+  min_barriers: 1
+  # A bike or run leg whose elevation never varies means the DEM returned a
+  # constant -- a dead tile, a bad sample, a stubbed source. Distinct from the
+  # character check, which is about whether the terrain matches the claim.
+  min_leg_elevation_range_m: 2.0

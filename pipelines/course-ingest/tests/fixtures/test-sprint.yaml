@@ -1,0 +1,42 @@
+# Test-only course spec. Not one of the nine seeded races.
+#
+# A real place with a real road network and real terrain. Skagen was chosen
+# because its dune-coast network is sparse enough that the checked-in slice
+# stays a few megabytes -- a dense city centre produced a 20 MB fixture. Used by
+# the determinism, validation and end-to-end tests.
+course_id: test-sprint
+slug: test-sprint
+name: Fixture Sprint
+place: Skagen, Denmark
+country: DK
+timezone: Europe/Copenhagen
+distance_type: Sprint
+difficulty: MODERATE
+character: flat_exposed
+tone_color: "#44607f"
+
+start:
+  lat: 57.7180
+  lng: 10.5830
+
+swim:
+  water_kind: sea
+  water_name: Kattegat
+  bearing_deg: 120
+
+bike:
+  laps: 2
+  bearing_offset_deg: 100
+  character: flat_exposed
+
+run:
+  laps: 2
+  bearing_offset_deg: 260
+  character: flat_exposed
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.05
+changelog: Test fixture course.

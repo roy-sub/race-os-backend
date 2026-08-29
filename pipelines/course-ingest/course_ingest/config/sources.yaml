@@ -1,0 +1,63 @@
+# Data-source configuration.
+#
+# Every value here is pinned. Changing any of them changes generated output and
+# therefore requires a bundle version bump. The pinned Overture release string is
+# carried into every bundle's provenance block so a bundle is traceable to the
+# exact data snapshot that produced it.
+
+roads:
+  # Overture Maps transportation theme. OSM-derived, ODbL-1.0.
+  #
+  # Chosen over a hosted routing API (OSRM / Valhalla / openrouteservice) because
+  # those re-import OSM continuously and cannot promise that the same request
+  # returns the same geometry next season. A pinned release can.
+  driver: overture_s3
+  release: "2026-08-19.0"
+  bucket_url: "https://overturemaps-us-west-2.s3.amazonaws.com"
+  segment_prefix: "release/{release}/theme=transportation/type=segment/"
+  # Themes used for the swim leg's water polygons.
+  water_prefix: "release/{release}/theme=base/type=water/"
+  request_timeout_s: 180
+  max_parallel_footer_reads: 16
+
+elevation:
+  # AWS Terrain Tiles: Terrarium-encoded PNG, global, public.
+  #
+  # SUBSTITUTION (documented in README.md): RaceOS_Build_Spec.md Part 2 names the
+  # Mapterhorn tileset (Copernicus GLO-30 + national LiDAR). Mapterhorn is not
+  # reachable from the build environment's egress policy. AWS Terrain Tiles uses
+  # the identical Terrarium encoding, so the frontend raster-dem source consumes
+  # either without change. Swapping back is a change to `tile_url` alone.
+  driver: terrarium_xyz
+  tile_url: "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
+  attribution: "AWS Terrain Tiles"
+  # Zoom used to sample node elevations. z14 is ~7 m/px at mid latitudes, which
+  # resolves the 10 m node spacing without over-sampling a 30 m native DEM.
+  sample_zoom: 14
+  # Zoom range packed into the per-course clipped PMTiles extract.
+  extract_min_zoom: 8
+  extract_max_zoom: 13
+  tile_size: 256
+  request_timeout_s: 120
+  max_parallel_tile_reads: 12
+  # A missing DEM tile is a hard failure. Never interpolate across a gap.
+  fail_on_missing_tile: true
+
+cache:
+  # Content-addressed on-disk cache. Makes re-runs cheap and offline-repeatable.
+  dir: ".cache"
+  enabled: true
+
+licensing:
+  # Emitted attribution is DATA-DRIVEN: assembled from the `sources[].dataset`
+  # and `sources[].license` values of the ways actually used by each route, not
+  # hardcoded. These are the display templates.
+  dataset_attribution:
+    OpenStreetMap: "© OpenStreetMap contributors"
+    TomTom: "© TomTom"
+    Overture Maps: "© Overture Maps Foundation"
+  license_names:
+    ODbL-1.0: "ODbL 1.0"
+    CDLA-Permissive-2.0: "CDLA-Permissive 2.0"
+  # Appended verbatim after the road attribution.
+  elevation_attribution: "Elevation: AWS Terrain Tiles"

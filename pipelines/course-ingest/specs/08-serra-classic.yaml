@@ -1,0 +1,49 @@
+# Serra Classic -- rugged mountains, provenance deliberately unverified.
+#
+# Port de Soller, so this course and Tramuntana Full share an island but no
+# roads. Sa Calobra, the Coll de Soller and the Puig Major flank are what make
+# it rugged.
+course_id: serra-classic
+slug: serra-classic
+name: Serra Classic
+place: Mallorca, Spain
+country: ES
+timezone: Europe/Madrid
+distance_type: Full
+difficulty: BRUTAL
+character: rugged_mountain
+tone_color: "#5c4a3f"
+
+start:
+  lat: 39.7960
+  lng: 2.6930
+
+swim:
+  water_kind: sea
+  water_name: Port de Soller
+  bearing_deg: 300
+
+bike:
+  laps: 1
+  bearing_offset_deg: 40
+  character: rugged_mountain
+
+run:
+  laps: 4
+  bearing_offset_deg: 120
+  character: rolling
+
+season_year: 2026
+version: v2026.1
+# Stays ESTIMATED and unverified on purpose, so the UI's provenance warning is
+# visibly testable against real seed data (Part 21.1).
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 0.97
+
+changelog: >-
+  Initial generated bundle. Port de Soller sea swim, rugged Tramuntana bike leg,
+  four-lap valley run. Provenance intentionally left unverified.
+notes: >-
+  The deliberately unverified course. Do not promote to CROWD or OFFICIAL --
+  the provenance warning has nothing else to render against.

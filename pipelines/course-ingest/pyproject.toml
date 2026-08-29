@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raceos-course-ingest"
+version = "1.0.0"
+description = "RaceOS course bundle ingestion pipeline: real OSM roads, real DEM elevation, fictional race names."
+requires-python = ">=3.11"
+dependencies = [
+  "pyarrow>=15",
+  "requests>=2.31",
+  "numpy>=1.26",
+  "pillow>=10",
+  "PyYAML>=6",
+  "matplotlib>=3.8",
+  "pmtiles>=3.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+course-ingest = "course_ingest.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["course_ingest*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: requires outbound network access to AWS S3"]

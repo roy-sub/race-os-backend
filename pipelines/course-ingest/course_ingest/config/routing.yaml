@@ -1,0 +1,207 @@
+# Routing configuration. Cost is `length_m * class_cost * character_factor`.
+# No conditionals in code select these — every branch is a table lookup here.
+
+# Overture `class` values usable by each leg, with a relative cost multiplier.
+# 1.0 is neutral; higher is less preferred. A class absent from a leg's table is
+# not routable for that leg.
+class_cost:
+  bike:
+    motorway: null          # prohibited: no triathlon bike leg uses a motorway
+    motorway_link: null
+    trunk: 1.9              # legal in most of Europe but rarely raced; discouraged
+    trunk_link: 1.9
+    primary: 1.05
+    primary_link: 1.15
+    secondary: 1.00
+    secondary_link: 1.10
+    tertiary: 1.02
+    tertiary_link: 1.12
+    unclassified: 1.20
+    residential: 1.45
+    living_street: 2.20
+    service: null          # a bike leg does not race a service road
+    track: null            # nor a farm track
+    cycleway: 1.35
+    path: null
+    footway: null
+    pedestrian: null
+    steps: null
+    unknown: 2.50
+  run:
+    motorway: null
+    motorway_link: null
+    trunk: null
+    trunk_link: null
+    primary: 1.60
+    primary_link: 1.70
+    secondary: 1.30
+    secondary_link: 1.40
+    tertiary: 1.15
+    tertiary_link: 1.25
+    unclassified: 1.10
+    residential: 1.00
+    living_street: 1.00
+    service: 1.60
+    track: 1.60
+    cycleway: 0.90
+    path: 1.20
+    footway: 1.00
+    pedestrian: 0.95
+    steps: null
+    unknown: 2.50
+
+# Overture access_restrictions access_type values that make an edge unusable.
+denied_access_types: ["denied"]
+
+# Structures the DEM cannot represent, and what to do about them.
+#
+# A tunnel's terrain sample is the mountain above it, and a long viaduct's is
+# the gorge below. Both would put fabricated elevation into the bundle. The
+# brief's rule is that every height comes from the DEM, so the answer is to
+# route around the structures the DEM cannot see rather than to patch their
+# elevation afterwards.
+structures:
+  # Way flags that make an edge unroutable outright.
+  excluded_flags: ["is_tunnel", "is_covered", "is_indoor", "is_abandoned", "is_under_construction"]
+  # Bridges are allowed -- most are a few metres over a stream -- but
+  # discouraged, and excluded outright beyond a length where the DEM's reading
+  # of the gap below becomes a cliff in the profile.
+  bridge_cost_multiplier: 2.5
+  max_bridge_length_m: 250.0
+  # Structures carry no flag often enough that flags alone are not a defence.
+  # After elevation sampling, any node steeper than the hard gradient bound is
+  # treated as evidence of a structure the DEM cannot see; the ways carrying
+  # those nodes are banned and the leg is routed again. Fixed pass count, so
+  # the search terminates deterministically.
+  max_reroute_passes: 2
+
+# Terrain character. `climb_bias` reshapes edge cost by the edge's own gradient:
+#   factor = clamp(1 - climb_bias * tanh(gradient / gradient_scale), min_f, max_f)
+# climb_bias > 0 makes uphill CHEAPER (a mountainous course seeks climbs),
+# < 0 makes uphill dearer (a flat course avoids them), 0 is terrain-blind.
+# The factor is clamped strictly positive so Dijkstra stays valid.
+#
+# The gain bands are the enforcement half: Stage 10 rejects a bundle whose
+# delivered elevation gain does not match its declared character, so "brutal"
+# cannot quietly come out flat.
+#
+# `waypoint_relief_fraction` is how far up the LOCAL RELIEF a course aims its
+# waypoints -- 0.65 means two thirds of the way from the network's low ground to
+# its high ground. Deliberately not a percentile of the node population: a road
+# network is mostly town streets, so on Mallorca the 97th-percentile node sits
+# at 212 m while the network reaches 834 m, and aiming at percentiles put the
+# flagship mountain course in the foothills.
+#
+# `min_gain_per_km` / `max_gain_per_km` are measured against the HYSTERESIS-
+# FILTERED ascent (course.yaml elevation.gain_threshold_m), not the raw sum of
+# node differences. Calibrated against real routed terrain rather than guessed:
+# Skagen's genuinely flat dune coast delivers 1.6-2.0 m/km filtered against
+# 3.7-4.3 m/km raw, so an unfiltered band would have measured DEM noise rather
+# than terrain. Adjacent bands overlap because character is a spectrum; the
+# separation that has to hold is mountainous-minimum well above flat-maximum,
+# which is the assertion that protects the seeded feasibility states.
+#
+# The flat characters have a minimum of zero on purpose. A flat course with no
+# measurable ascent is correct, not suspect, and a floor there would assert
+# terrain that is not present. The failure a floor might have caught -- a DEM
+# that returned a constant -- is caught properly by the separate
+# `elevation_range` validation rule, which does not need a character to test.
+character:
+  mountainous:
+    climb_bias: 0.55
+    waypoint_relief_fraction: 0.65
+    min_gain_per_km: 11.0
+    max_gain_per_km: 40.0
+  rugged_mountain:
+    climb_bias: 0.62
+    waypoint_relief_fraction: 0.72
+    min_gain_per_km: 12.0
+    max_gain_per_km: 42.0
+  lake_mountain:
+    climb_bias: 0.58
+    waypoint_relief_fraction: 0.65
+    min_gain_per_km: 11.0
+    max_gain_per_km: 40.0
+  rolling:
+    climb_bias: 0.16
+    waypoint_relief_fraction: 0.35
+    min_gain_per_km: 4.0
+    max_gain_per_km: 16.0
+  rural_rolling:
+    climb_bias: 0.14
+    waypoint_relief_fraction: 0.3
+    min_gain_per_km: 3.5
+    max_gain_per_km: 15.0
+  harbour_volcanic:
+    climb_bias: 0.20
+    waypoint_relief_fraction: 0.38
+    min_gain_per_km: 4.5
+    max_gain_per_km: 18.0
+  fjord_town:
+    climb_bias: 0.22
+    waypoint_relief_fraction: 0.35
+    min_gain_per_km: 4.0
+    max_gain_per_km: 22.0
+  approachable:
+    climb_bias: -0.20
+    waypoint_relief_fraction: 0.1
+    min_gain_per_km: 0.0
+    max_gain_per_km: 9.0
+  flat_coastal:
+    climb_bias: -0.35
+    waypoint_relief_fraction: 0.06
+    min_gain_per_km: 0.0
+    max_gain_per_km: 7.5
+  flat_exposed:
+    climb_bias: -0.40
+    waypoint_relief_fraction: 0.04
+    min_gain_per_km: 0.0
+    max_gain_per_km: 5.0
+
+gradient_scale: 0.045
+character_factor_min: 0.45
+character_factor_max: 2.60
+
+# Loop construction. A leg is routed start -> w1 -> ... -> wN -> start over a
+# ring of waypoints. The ring radius is tuned by fixed-iteration bisection so the
+# result is deterministic; there is no tolerance-terminated search anywhere.
+loop:
+  bisection_iterations: 22
+  radius_bracket_fraction: [0.035, 0.42]   # of target leg distance
+  waypoint_count_by_distance:
+    Full: 7
+    "70.3": 5
+    Olympic: 4
+    Sprint: 3
+  # Waypoints are spread over an arc centred on the spec's bearing_offset, not
+  # necessarily the full circle. A coastal start cannot reach mountains in every
+  # direction, so a mountainous course uses a narrower arc and runs out and back
+  # into the range -- which is the shape a real mountain bike leg takes anyway.
+  # Per-character; a course may override it in its spec.
+  waypoint_arc_deg:
+    mountainous: 170.0
+    rugged_mountain: 160.0
+    lake_mountain: 175.0
+    rolling: 300.0
+    rural_rolling: 330.0
+    harbour_volcanic: 260.0
+    fjord_town: 300.0
+    approachable: 330.0
+    flat_coastal: 330.0
+    flat_exposed: 340.0
+  # Candidate waypoints are drawn from an annulus around the ring point and
+  # scored on the character objective; ties break on (distance, node id).
+  candidate_annulus_fraction: 0.30
+  max_candidates_per_waypoint: 240
+  # Discourage reusing the same edge in both directions on a loop lap.
+  repeat_edge_penalty: 3.0
+
+# Graph extraction bbox, as a multiple of the leg's target radius.
+graph_bbox_margin_fraction: 0.55
+graph_bbox_min_degrees: 0.08
+
+# Map-matching (used on the GPX upload path; an identity check on generated
+# routes, which are already road geometry).
+map_match:
+  max_snap_distance_m: 35.0
+  continuity_window_m: 250.0

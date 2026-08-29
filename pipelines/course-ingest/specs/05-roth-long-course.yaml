@@ -1,0 +1,40 @@
+# Roth Long Course -- rural rolling Franconia.
+course_id: roth-long-course
+slug: roth-long-course
+name: Roth Long Course
+place: Bavaria, Germany
+country: DE
+timezone: Europe/Berlin
+distance_type: Full
+difficulty: HARD
+character: rural_rolling
+tone_color: "#6b6033"
+
+start:
+  lat: 49.2280
+  lng: 11.0870
+
+swim:
+  water_kind: canal
+  water_name: Main-Donau-Kanal
+  bearing_deg: 20
+
+bike:
+  laps: 2
+  bearing_offset_deg: 150
+  character: rural_rolling
+
+run:
+  laps: 4
+  bearing_offset_deg: 60
+  character: rural_rolling
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.03
+
+changelog: >-
+  Initial generated bundle. Canal swim, two-lap rolling Franconian farm-road
+  bike leg, four-lap run.

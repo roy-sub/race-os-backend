@@ -1,0 +1,47 @@
+# Skagen 70.3 -- flat, open, wind-exposed dunes.
+course_id: skagen-703
+slug: skagen-703
+name: Skagen 70.3
+place: Skagen, Denmark
+country: DK
+timezone: Europe/Copenhagen
+distance_type: "70.3"
+difficulty: MODERATE
+character: flat_exposed
+tone_color: "#8a7645"
+
+start:
+  lat: 57.7180
+  lng: 10.5830
+
+swim:
+  water_kind: sea
+  water_name: Kattegat
+  bearing_deg: 120
+
+bike:
+  laps: 1
+  bearing_offset_deg: 200
+  character: flat_exposed
+
+run:
+  laps: 2
+  bearing_offset_deg: 340
+  character: flat_exposed
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+# The tight 70.3. RaceOS's primary market is Full AND 70.3, so the cut-off
+# feature has to be visible in seed data at both distances -- not only on the
+# two brutal fulls. Skagen is flat and fast, so tightness has to come from the
+# ladder rather than the terrain: 0.88 turns a comfortable day into a real one.
+cutoff_generosity: 0.88
+
+changelog: >-
+  Initial generated bundle. Exposed dune-coast bike leg, two-lap town run.
+  Deliberately tight cut-off ladder.
+notes: >-
+  The 70.3 tight case. A mid-pack athlete should find the bike cut-off genuinely
+  in play here.
