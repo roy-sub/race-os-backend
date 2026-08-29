@@ -201,6 +201,12 @@ loop:
   # rather than decisive: the best high ground in a sector is often up a spur,
   # and making this a hard rule cost the flagship course 700 m of climbing.
   cul_de_sac_penalty_m: 45.0
+  # Cleaning and map-matching shorten a routed leg slightly, so the length that
+  # survives them is not the length that was routed. After measuring the
+  # delivered leg, the out-and-back spur is re-cut to make up the difference and
+  # the downstream stages run again. Fixed pass count, cheap: only the spur is
+  # re-routed, never the loop.
+  length_correction_passes: 3
 
 # Graph extraction bbox, as a multiple of the leg's target radius.
 graph_bbox_margin_fraction: 0.55

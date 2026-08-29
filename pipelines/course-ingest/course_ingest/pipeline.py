@@ -24,7 +24,14 @@ from .sources.overture import OvertureRoadSource
 from .sources.terrarium import TerrariumDemSource
 from .spec import CourseSpec
 from .stages.s01_ingest import BuildPlan, ingest
-from .stages.s02_route import build_graph, route_leg, ways_carrying_bad_gradients
+from .graph import RoutingError
+from .stages.s02_route import (
+    assemble_leg,
+    build_graph,
+    build_loop,
+    route_leg,
+    ways_carrying_bad_gradients,
+)
 from .stages.s03_swim import draw_swim
 from .stages.s04_clean import clean_leg
 from .stages.s05_mapmatch import _EdgeIndex, map_match
@@ -52,19 +59,46 @@ def default_sources(cfg: Config, cache_dir: str | Path | None = None) -> tuple[R
     return OvertureRoadSource(cfg, cache), TerrariumDemSource(cfg, cache)
 
 
-def _bad_ways(routed, dem: DemSource, hard_max: float) -> frozenset[str]:
-    """Sample the routed line at node resolution and find the ways whose terrain
-    profile is impossible for a road."""
+def _sampled_gradients(points, dem: DemSource, spacing: float = 10.0):
     from .geo import resample as _resample
 
-    nodes = _resample(list(routed.points), 10.0)
+    nodes = _resample(list(points), spacing)
     heights = dem.sample(nodes)
     cum = cumulative_m(nodes)
     grads = [
         0.0 if cum[i + 1] - cum[i] <= 0 else (heights[i + 1] - heights[i]) / (cum[i + 1] - cum[i])
         for i in range(len(heights) - 1)
     ]
+    return cum, grads
+
+
+def _bad_ways(routed, dem: DemSource, hard_max: float) -> frozenset[str]:
+    """Ways whose terrain profile is impossible for a road.
+
+    A road does not climb at 200%. Where the series says it does, the route has
+    crossed something the DEM cannot see -- an unflagged viaduct, a cutting --
+    and the honest response is to route elsewhere rather than invent a height.
+    """
+    cum, grads = _sampled_gradients(routed.points, dem)
     return ways_carrying_bad_gradients(routed.spans, cum, grads, hard_max)
+
+
+def _outlier_ways(routed, dem: DemSource, outlier_max: float, fraction_limit: float):
+    """Ways carrying steep-but-not-impossible nodes, when there are too many.
+
+    Returns (ways, fraction). A DEM sampled every 10 m on a road cut into a
+    hillside always produces a few nodes over the bound; only an unusual number
+    of them is worth a second attempt.
+    """
+    cum, grads = _sampled_gradients(routed.points, dem)
+    outliers = [i for i, g in enumerate(grads) if abs(g) > outlier_max]
+    fraction = len(outliers) / max(1, len(grads))
+    if fraction <= fraction_limit:
+        return frozenset(), fraction
+    return (
+        ways_carrying_bad_gradients(routed.spans, cum, grads, outlier_max),
+        fraction,
+    )
 
 
 def generate(
@@ -93,9 +127,28 @@ def generate(
     # --- 1. ingest -------------------------------------------------------
     plan = timed("01-ingest", lambda: ingest(spec, cfg))
 
-    # --- 2. route bike and run ------------------------------------------
+    # --- 2. route bike and run, with stages 4-6 in the correction loop ------
+    #
+    # Cleaning and map-matching shorten a routed leg, so the length that
+    # survives them is not the length that was routed. The delivered leg is
+    # therefore measured and the spur re-cut until it lands inside tolerance --
+    # a fixed number of passes, and only the spur is re-routed, never the loop.
     hard_max = float(cfg["course"]["validation"]["hard_max_node_gradient"])
+    outlier_max = float(cfg["course"]["validation"]["max_abs_node_gradient"])
+    outlier_fraction_limit = float(cfg["course"]["validation"]["outlier_reroute_fraction"])
     max_passes = int(cfg["routing"]["structures"]["max_reroute_passes"])
+    correction_passes = int(cfg["routing"]["loop"]["length_correction_passes"])
+    tolerance = cfg["course"]["distance_tolerance"]
+
+    cleaned: dict[str, list] = {}
+    nodes: dict[str, list] = {}
+
+    def _finish_leg(leg: str, points, graph):
+        """Stages 4-6 for one leg: clean, map-match, resample."""
+        pts, clean_report = clean_leg(list(points), leg, cfg, close_loop=True)
+        pts, match_report = map_match(pts, graph, leg, cfg, _EdgeIndex(graph))
+        node_list, resample_report = resample_leg(pts, leg, cfg)
+        return pts, node_list, (clean_report, match_report, resample_report)
 
     def _route(leg: str, bbox, target_m, laps, character, bearing):
         graph = build_graph(roads, dem, bbox, cfg, leg)
@@ -104,25 +157,86 @@ def generate(
             f"(excluded {graph.excluded_structure_ways} tunnel/covered ways, "
             f"{graph.excluded_bridge_edges} long-bridge spans)"
         )
+
         banned: frozenset[str] = frozenset()
-        routed = None
+        outlier_pass_used = False
+        router = transition = loop = None
+        accepted: tuple | None = None
         for attempt in range(max_passes + 1):
-            routed = route_leg(
-                plan, cfg, graph, leg, target_m, laps, character, bearing, banned_ways=banned
-            )
-            bad = _bad_ways(routed, dem, hard_max)
-            if not bad or attempt == max_passes:
+            try:
+                router, transition, loop = build_loop(
+                    plan, cfg, graph, leg, target_m, laps, character, bearing, banned
+                )
+            except RoutingError as exc:
+                # Banning ways can cut a sparse rural network in two. When it
+                # does, keep the last route that worked and accept its outliers
+                # rather than failing the course over DEM noise.
+                if accepted is None:
+                    raise
+                log(
+                    f"     {leg.lower()}: excluding {len(banned)} ways leaves no route "
+                    f"({exc}); keeping the previous route and accepting its steep nodes"
+                )
+                router, transition, loop, banned = accepted
+                break
+            accepted = (router, transition, loop, banned)
+            probe = assemble_leg(router, graph, leg, loop, transition, target_m, laps, banned)
+            bad = _bad_ways(probe, dem, hard_max)
+            extra = frozenset()
+            if not bad and not outlier_pass_used:
+                extra, fraction = _outlier_ways(probe, dem, outlier_max, outlier_fraction_limit)
+                if extra:
+                    outlier_pass_used = True
+                    log(
+                        f"     {leg.lower()}: {fraction:.2%} of nodes over {outlier_max:.0%} "
+                        f"(trigger {outlier_fraction_limit:.1%}); one re-route without "
+                        f"{len(extra)} ways, then accept"
+                    )
+            if not (bad or extra) or attempt == max_passes:
                 if bad:
                     log(
                         f"     {leg.lower()}: {len(bad)} ways still exceed the hard gradient "
                         "bound after re-routing; the bundle will be rejected"
                     )
                 break
-            banned = banned | bad
-            log(
-                f"     {leg.lower()}: {len(bad)} ways cross terrain the DEM cannot see; "
-                f"re-routing without them (pass {attempt + 2})"
+            if bad:
+                log(
+                    f"     {leg.lower()}: {len(bad)} ways cross terrain the DEM cannot see; "
+                    f"re-routing without them (pass {attempt + 2})"
+                )
+            banned = banned | bad | extra
+
+        # Length correction: re-cut the spur until the delivered leg is in
+        # tolerance. Deterministic, fixed pass count, no loop re-search.
+        tol_m = target_m * float(tolerance[leg])
+        extra_spur = 0.0
+        best = None
+        for correction in range(correction_passes):
+            routed = assemble_leg(
+                router, graph, leg, loop, transition, target_m, laps, banned, extra_spur
             )
+            pts, node_list, reps = _finish_leg(leg, routed.points, graph)
+            delivered = cumulative_m(node_list)[-1]
+            error = delivered - target_m
+            if best is None or abs(error) < abs(best[0]):
+                best = (error, routed, pts, node_list, reps)
+            if abs(error) <= tol_m:
+                break
+            if correction < correction_passes - 1:
+                # The spur is traversed once per lap, so a per-lap correction of
+                # deficit/laps closes the whole gap.
+                extra_spur += -error / laps
+                log(
+                    f"     {leg.lower()}: delivered {delivered/1000:.3f} km vs "
+                    f"{target_m/1000:.3f} km ({error:+.0f} m); re-cutting the spur"
+                )
+        error, routed, pts, node_list, reps = best
+        cleaned[leg] = pts
+        nodes[leg] = node_list
+        reports.setdefault("clean", {})[leg] = reps[0]
+        reports.setdefault("map_match", {})[leg] = reps[1]
+        reports.setdefault("resample", {})[leg] = reps[2]
+        log(f"     {leg.lower()}: delivered {cumulative_m(node_list)[-1]/1000:.3f} km ({error:+.0f} m)")
         return routed
 
     bike = timed(
@@ -139,35 +253,17 @@ def generate(
     # --- 3. draw the swim ------------------------------------------------
     swim = timed("03-swim", lambda: draw_swim(plan, cfg, roads))
 
-    # --- 4. clean --------------------------------------------------------
-    raw = {"SWIM": list(swim.points), "BIKE": list(bike.points), "RUN": list(run.points)}
-    cleaned: dict[str, list] = {}
-
-    def _clean():
-        for leg, pts in raw.items():
-            pts2, rep = clean_leg(pts, leg, cfg, close_loop=True)
-            cleaned[leg] = pts2
-            reports.setdefault("clean", {})[leg] = rep
-    timed("04-clean", _clean)
-
-    # --- 5. map-match bike and run --------------------------------------
-    def _match():
-        for leg, routed in (("BIKE", bike), ("RUN", run)):
-            index = _EdgeIndex(routed.graph)
-            pts, rep = map_match(cleaned[leg], routed.graph, leg, cfg, index)
-            cleaned[leg] = pts
-            reports.setdefault("map_match", {})[leg] = rep
-    timed("05-mapmatch", _match)
-
-    # --- 6. resample to ~10 m -------------------------------------------
-    nodes: dict[str, list] = {}
-
-    def _resample():
-        for leg in ("SWIM", "BIKE", "RUN"):
-            pts, rep = resample_leg(cleaned[leg], leg, cfg)
-            nodes[leg] = pts
-            reports.setdefault("resample", {})[leg] = rep
-    timed("06-resample", _resample)
+    # --- 4/5/6. clean and resample the swim -------------------------------
+    # Bike and run went through stages 4-6 inside the correction loop above;
+    # the swim has no road to match against, so it only cleans and resamples.
+    def _finish_swim():
+        pts, clean_report = clean_leg(list(swim.points), "SWIM", cfg, close_loop=True)
+        cleaned["SWIM"] = pts
+        reports.setdefault("clean", {})["SWIM"] = clean_report
+        node_list, resample_report = resample_leg(pts, "SWIM", cfg)
+        nodes["SWIM"] = node_list
+        reports.setdefault("resample", {})["SWIM"] = resample_report
+    timed("04-06-swim-clean", _finish_swim)
 
     # --- 7. sample the DEM ----------------------------------------------
     heights: dict[str, list] = {}

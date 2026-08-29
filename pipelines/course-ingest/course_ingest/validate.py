@@ -90,7 +90,7 @@ def validate_bundle(bundle: dict[str, Any], cfg: Config, packed_bytes: int | Non
             f"distance_{leg.lower()}",
             abs(deviation) <= tol,
             f"{actual/1000:.3f} km vs nominal {target/1000:.3f} km "
-            f"({deviation*100:+.2f}%, tolerance +/-{tol*100:.0f}%)",
+            f"({deviation*100:+.2f}%, tolerance +/-{tol*100:.1f}%)",
         )
 
     # 2. Barrier ordering chronologically sane.

@@ -47,3 +47,17 @@ changelog: >-
 notes: >-
   The deliberately unverified course. Do not promote to CROWD or OFFICIAL --
   the provenance warning has nothing else to render against.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/08-serra-classic.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending

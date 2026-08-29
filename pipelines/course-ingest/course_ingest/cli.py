@@ -106,13 +106,24 @@ def cmd_validate(args) -> int:
 
 
 def cmd_regenerate_all(args) -> int:
-    paths = sorted(Path(args.specs_dir).glob("*.yaml"))
-    if not paths:
+    # Parse every spec up front so a typo in the last file fails before the
+    # first course spends two minutes routing.
+    specs = load_all_specs(args.specs_dir)
+    if not specs:
         print(f"no specs found in {args.specs_dir}", file=sys.stderr)
         return 1
-    # Parse every spec up front so a typo in the ninth file fails before the
-    # first course spends two minutes routing.
-    load_all_specs(args.specs_dir)
+    by_path = {p: s for p, s in zip(sorted(Path(args.specs_dir).glob("*.yaml")), specs)}
+    if args.include_pending:
+        paths = sorted(by_path)
+    else:
+        paths = sorted(p for p, s in by_path.items() if s.status == "ready")
+        skipped = [s.name for s in specs if s.status != "ready"]
+        if skipped:
+            print(f"skipping {len(skipped)} pending course(s): {', '.join(skipped)}")
+            print("  (pass --include-pending to build them)")
+    if not paths:
+        print("every spec is marked pending; nothing to build", file=sys.stderr)
+        return 1
     ns = argparse.Namespace(
         specs=paths,
         out=args.out,
@@ -155,6 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("regenerate-all", help="regenerate every course in specs/")
     r.add_argument("--specs-dir", default=str(DEFAULT_SPECS))
+    r.add_argument(
+        "--include-pending",
+        action="store_true",
+        help="also build courses whose spec is marked `status: pending`",
+    )
     common(r)
     r.set_defaults(func=cmd_regenerate_all)
 

@@ -8,10 +8,12 @@ distances:
   Sprint: {swim_m: 750,   bike_m: 20000,  run_m: 5000}
 
 # Fraction of nominal distance a leg may deviate by and still validate.
+# A marathon 700 m short is a marathon nobody ran, so this is tight and the
+# router corrects to hit it (routing.loop.length_correction_passes).
 distance_tolerance:
-  SWIM: 0.02
-  BIKE: 0.02
-  RUN:  0.02
+  SWIM: 0.005
+  BIKE: 0.005
+  RUN:  0.005
 
 # Resampling. Part 10.2 step 4: "~10 m nodes so gradient is stable and
 # comparable across courses."
@@ -140,8 +142,14 @@ validation:
   # A road at 40% means the route jumped a valley.
   max_abs_node_gradient: 0.30
   # Fraction of a leg's nodes allowed to exceed the gradient bound before the
-  # bundle is rejected. Mirrors SOLVER_MODEL.md 1.3 node_clamp_fail_fraction.
+  # bundle is rejected. Mirrors SOLVER_MODEL.md 1.3 node_clamp_fail_fraction,
+  # which is the solver's own limit, so this stays at 2%.
   max_gradient_outlier_fraction: 0.02
+  # Separate, tighter trigger: above this fraction the router makes ONE more
+  # attempt without the offending ways, then accepts whatever it gets. A DEM
+  # sampled at 10 m on a road cut into a hillside will always produce a few
+  # steep nodes, and chasing them to zero is not a good use of a build.
+  outlier_reroute_fraction: 0.005
   max_bundle_bytes: 409600
   # A handful of nodes may exceed max_abs_node_gradient on a road cut into a
   # hillside, which is why the fraction above is tolerated. Nothing on a road

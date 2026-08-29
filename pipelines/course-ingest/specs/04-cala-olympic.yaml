@@ -39,3 +39,17 @@ changelog: >-
   Initial generated bundle. Cove swim at Cala Millor, flat Llevant plain bike,
   two-lap seafront run.
 notes: The gentlest course in the set, and the most generous cut-offs. Built for first-timers.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/04-cala-olympic.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending

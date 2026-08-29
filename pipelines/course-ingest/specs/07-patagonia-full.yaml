@@ -44,3 +44,17 @@ changelog: >-
 notes: >-
   Brutal terrain on a tightened ladder. One of the two full-distance courses
   where a mid-pack athlete's margins should be genuinely narrow.
+
+# --------------------------------------------------------------------------
+# STATUS: pending -- specified but not yet generated.
+#
+# The shipping set is Tramuntana Full, Kalmar 70.3 and Skagen 70.3. This course
+# is deferred until after launch. Everything below is settled: start
+# coordinate, terrain character, lap structure and cut-off dial. To build it,
+# change `status` to `ready` and run:
+#
+#     course-ingest generate specs/07-patagonia-full.yaml
+#
+# Nothing needs re-deriving.
+# --------------------------------------------------------------------------
+status: pending

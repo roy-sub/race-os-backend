@@ -15,6 +15,11 @@ import yaml
 DISTANCE_TYPES = ("Sprint", "Olympic", "70.3", "Full")
 DIFFICULTIES = ("APPROACHABLE", "MODERATE", "HARD", "BRUTAL")
 PROVENANCES = ("OFFICIAL", "CROWD", "ESTIMATED")
+#: Whether this course is in the current shipping set. `pending` specs are
+#: fully written -- coordinates, character, lap structure and cut-off dial all
+#: settled -- and are skipped by `regenerate-all` until someone flips them to
+#: `ready`. Nothing about them needs re-deriving.
+STATUSES = ("ready", "pending")
 WATER_KINDS = ("sea", "lake", "canal", "harbour")
 
 
@@ -52,6 +57,7 @@ class CourseSpec:
     version: str
     provenance: str
     verified: bool
+    status: str
     cutoff_generosity: float
     changelog: str
     media_hero_path: str | None = None
@@ -86,6 +92,9 @@ def load_spec(path: str | Path) -> CourseSpec:
     provenance = data.get("provenance", "ESTIMATED")
     if provenance not in PROVENANCES:
         raise SpecError(f"{path.name}: provenance must be one of {PROVENANCES}")
+    status = data.get("status", "ready")
+    if status not in STATUSES:
+        raise SpecError(f"{path.name}: status must be one of {STATUSES}")
 
     start = _require(data, "start", path)
     swim = _require(data, "swim", path)
@@ -122,6 +131,7 @@ def load_spec(path: str | Path) -> CourseSpec:
         version=str(data.get("version", "v2026.1")),
         provenance=provenance,
         verified=bool(data.get("verified", False)),
+        status=status,
         cutoff_generosity=float(data.get("cutoff_generosity", 1.0)),
         changelog=data.get("changelog", ""),
         media_hero_path=data.get("media_hero_path"),

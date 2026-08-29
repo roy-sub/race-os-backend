@@ -38,3 +38,6 @@ cutoff_generosity: 1.05
 changelog: >-
   Initial generated bundle. Flat Kalmarsund coastal bike leg, two-lap city run.
 notes: Deliberately the most generous cut-off ladder in the set -- the fast, forgiving 70.3.
+
+# In the shipping set.
+status: ready

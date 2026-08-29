@@ -175,15 +175,24 @@ class RoadGraph:
 
     # ----------------------------------------------------------- connectivity
 
-    def component_of(self, start: int) -> set[int]:
+    def component_of(self, start: int, banned_ways: frozenset[str] = frozenset()) -> set[int]:
+        """Nodes reachable from `start`, honouring banned ways.
+
+        Banning a way can cut the network in two on a sparse rural graph. If the
+        component is computed without the ban, a waypoint can be chosen on the
+        far side of the cut and routing to it then fails outright.
+        """
         seen = {start}
         stack = [start]
         while stack:
             n = stack.pop()
-            for _ei, m in self.adj[n]:
-                if m not in seen:
-                    seen.add(m)
-                    stack.append(m)
+            for ei, m in self.adj[n]:
+                if m in seen:
+                    continue
+                if banned_ways and self.edges[ei].way_id in banned_ways:
+                    continue
+                seen.add(m)
+                stack.append(m)
         return seen
 
     def nearest_node(self, xy: Point, allowed: set[int] | None = None) -> int:
@@ -460,7 +469,7 @@ class LoopRouter:
         return steps, pts, path_length_m(pts), tuple(waypoints), owners
 
     def route(self, start: int, target_m: float, count: int, bearing_offset: float) -> RoutedLeg:
-        component = self.g.component_of(start)
+        component = self.g.component_of(start, self.banned_ways)
         if len(component) < 32:
             raise RoutingError(
                 f"start node sits in a component of {len(component)} nodes; "

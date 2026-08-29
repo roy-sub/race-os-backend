@@ -121,12 +121,35 @@ def route_leg(
     bearing_offset_deg: float,
     banned_ways: frozenset[str] = frozenset(),
 ) -> RoutedLegResult:
+    """Route one leg: pick the loop, then assemble it with a distance-making spur."""
+    router, transition, routed = build_loop(
+        plan, cfg, graph, leg, target_m, laps, character, bearing_offset_deg, banned_ways
+    )
+    return assemble_leg(router, graph, leg, routed, transition, target_m, laps, banned_ways)
+
+
+def build_loop(
+    plan: BuildPlan,
+    cfg: Config,
+    graph: RoadGraph,
+    leg: str,
+    target_m: float,
+    laps: int,
+    character: str,
+    bearing_offset_deg: float,
+    banned_ways: frozenset[str] = frozenset(),
+):
+    """The expensive half: the radius scan and bisection that choose the loop.
+
+    Separated from `assemble_leg` so the length-correction passes can re-cut the
+    spur -- one Dijkstra -- without repeating the search.
+    """
     lap_target = target_m / laps
     router = LoopRouter(graph, cfg, leg, character)
     router.banned_ways = banned_ways
 
     component_seed = graph.nearest_node(plan.start)
-    component = graph.component_of(component_seed)
+    component = graph.component_of(component_seed, banned_ways)
     if len(component) < 32:
         # The nearest node is on an island of the network; take the nearest node
         # of the largest component instead.
@@ -135,7 +158,7 @@ def route_leg(
         for n in range(len(graph.node_key)):
             if n in seen:
                 continue
-            comp = graph.component_of(n)
+            comp = graph.component_of(n, banned_ways)
             seen |= comp
             if len(comp) > len(best):
                 best = comp
@@ -145,8 +168,27 @@ def route_leg(
     routed = router.route(
         transition, lap_target, plan.waypoint_count, math.radians(bearing_offset_deg)
     )
+    return router, transition, routed
 
-    shortfall = lap_target - routed.length_m
+
+def assemble_leg(
+    router: LoopRouter,
+    graph: RoadGraph,
+    leg: str,
+    routed,
+    transition: int,
+    target_m: float,
+    laps: int,
+    banned_ways: frozenset[str] = frozenset(),
+    extra_spur_m: float = 0.0,
+) -> RoutedLegResult:
+    """Attach the out-and-back spur and repeat the lap.
+
+    `extra_spur_m` is the correction the caller applies once it knows how much
+    length the downstream cleaning and map-matching stages take off.
+    """
+    lap_target = target_m / laps
+    shortfall = lap_target - routed.length_m + extra_spur_m
     spur: list[Point] = []
     spur_owners: list[int] = []
     if shortfall > 1.0:

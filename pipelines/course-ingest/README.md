@@ -20,14 +20,21 @@ pip install -e .
 # one course
 course-ingest generate specs/01-tramuntana-full.yaml
 
-# all nine
+# every course marked `status: ready` (currently three)
 course-ingest regenerate-all
 
 # check an emitted fixture
 course-ingest validate out/bundles/tramuntana-full.bundle.json
 
-# the nine-course contact sheet for eyeballing
+# the contact sheet, and the full review page
 course-ingest visual-check
+python tools/build_review_page.py
+
+# cut-off margins for three athlete profiles
+python tools/margin_check.py
+
+# the determinism proof: two full runs, byte-compared
+./tools/determinism_check.sh
 ```
 
 Useful flags: `--dry-run` (validate without writing), `--skip-terrain` (no PMTiles extract, much
@@ -46,7 +53,8 @@ Per course, in `out/`:
 | `bundles/<slug>.bundle.bin` | The packed bundle behind `course_bundles.bundle_asset_key`. Under the 400 KB budget. |
 | `terrain/<slug>.pmtiles` | Terrarium DEM clipped to the course bounding box, for `course_bundles.terrain_pmtiles_key`. |
 | `visual-check/<slug>.png` | Static map plus elevation profile. |
-| `visual-check/nine-course-contact-sheet.png` | All nine on one sheet. |
+| `visual-check/nine-course-contact-sheet.png` | Every generated course on one sheet. |
+| `visual-check/three-course-review.html` | The full review page: per course a map, profile, distances, character verdict, cut-off ladder and margin spot-check. |
 
 `out/` is git-ignored. Bundles and terrain extracts are build artefacts that belong in object
 storage behind a CDN (Part 10.3), and a terrain extract is tens of megabytes. `make regenerate`
@@ -217,6 +225,18 @@ Making a course harder is one number in its spec. See `docs/CUTOFF_LADDER.md` fo
 the nine and why three of them are deliberately tight.
 
 ---
+
+## The shipping set, and the six deferred courses
+
+Three courses are generated: **Tramuntana Full** (full distance, mountainous),
+**Kalmar 70.3** (flat coastal, generous cut-offs) and **Skagen 70.3** (flat and exposed, deliberately
+tight cut-offs). Between them they cover both primary distances, both terrain extremes, and a
+feasibility spread from CLEAR to INFEASIBLE.
+
+The other six specs are complete and marked `status: pending`. `regenerate-all` skips them; pass
+`--include-pending` to build them. **Their coordinates, terrain character, lap structure and cut-off
+dial are settled and reviewed — nothing needs re-deriving.** Change `status: pending` to
+`status: ready` and generate.
 
 ## Adding a course
 
