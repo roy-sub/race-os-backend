@@ -1,0 +1,4 @@
+# Session deliverable archives. Built by
+# pipelines/course-ingest/tools/make_artifact_zip.sh and delivered out of band;
+# a 24 MB binary does not belong in the repository's history.
+dist/
