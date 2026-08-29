@@ -29,6 +29,7 @@ from PIL import Image
 from ..geo import Point
 from .base import DemSource, MissingDemTile
 from .cache import BlobCache
+from .retry import check_status, with_retry
 
 
 def lonlat_to_pixel(lon: float, lat: float, zoom: int, tile_size: int) -> tuple[float, float]:
@@ -69,13 +70,18 @@ class TerrariumDemSource(DemSource):
         cached = self._cache.get("terrarium", url)
         if cached is not None:
             return cached
-        resp = self._session.get(url, timeout=self._timeout)
+        def fetch():
+            r = self._session.get(url, timeout=self._timeout)
+            if r.status_code == 404:
+                return r
+            return check_status(r)
+
+        resp = with_retry(fetch)
         if resp.status_code == 404:
             raise MissingDemTile(
                 f"DEM tile {z}/{x}/{y} is absent from {self.tile_url}. "
                 "Refusing to interpolate across a coverage gap."
             )
-        resp.raise_for_status()
         self.tiles_fetched += 1
         self._cache.put("terrarium", url, resp.content)
         return resp.content

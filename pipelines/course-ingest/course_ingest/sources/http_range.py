@@ -10,6 +10,8 @@ import io
 
 import requests
 
+from .retry import check_status, with_retry
+
 
 class HttpRangeFile(io.RawIOBase):
     def __init__(self, url: str, session: requests.Session | None = None, timeout: int = 180) -> None:
@@ -17,8 +19,11 @@ class HttpRangeFile(io.RawIOBase):
         self.timeout = timeout
         self._session = session or requests.Session()
         self._pos = 0
-        head = self._session.head(url, timeout=timeout, allow_redirects=True)
-        head.raise_for_status()
+        head = with_retry(
+            lambda: check_status(
+                self._session.head(url, timeout=timeout, allow_redirects=True)
+            )
+        )
         self.size = int(head.headers["Content-Length"])
         self.request_count = 0
         self.bytes_read = 0
@@ -47,10 +52,15 @@ class HttpRangeFile(io.RawIOBase):
         if size == 0 or self._pos >= self.size:
             return b""
         end = min(self._pos + size, self.size) - 1
-        resp = self._session.get(
-            self.url, headers={"Range": f"bytes={self._pos}-{end}"}, timeout=self.timeout
+        resp = with_retry(
+            lambda: check_status(
+                self._session.get(
+                    self.url,
+                    headers={"Range": f"bytes={self._pos}-{end}"},
+                    timeout=self.timeout,
+                )
+            )
         )
-        resp.raise_for_status()
         data = resp.content
         self.request_count += 1
         self.bytes_read += len(data)

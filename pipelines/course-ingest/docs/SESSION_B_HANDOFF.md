@@ -316,7 +316,17 @@ order; ties break on explicit total-order keys; the ring-radius search is a fixe
 fixed number of bisections; the packed bundle uses no compression (zlib output can vary between
 library builds); and every float is formatted at fixed precision rather than `repr`'d.
 
-Proven by `tests/test_determinism.py`, which runs the whole pipeline twice and compares bytes.
+Proven two ways:
+
+- `tests/test_determinism.py` runs the whole pipeline twice against the offline fixtures and
+  compares bytes. Runs in CI, no network.
+- `tools/determinism_check.sh` regenerates every `ready` course twice end to end against the real
+  sources and diffs the output trees.
+
+The scope of the guarantee is worth stating precisely: **given identical input data, the code is
+deterministic.** Input identity is guaranteed separately, by pinning the Overture release. The
+blob cache makes that concrete — the second run reads the same bytes the first one fetched, so the
+proof isolates the pipeline rather than testing the network.
 
 ---
 
@@ -374,8 +384,11 @@ builder does not import the pipeline; and no pipeline module names the golden di
   barrier-protection grid, fuelling and every clamp. Expect it a few per cent optimistic.
 - **Terrain PMTiles extracts are large** (~12 MB per course at z8–13) and git-ignored. They belong in
   object storage behind a CDN, per Part 10.3.
-- **A cold first run is slow.** ~260 MB of Overture footers for the row-group manifest (once, then
-  cached) plus DEM tiles. Warm, a full-distance course is two to four minutes.
+- **A cold first run is slow.** ~260 MB of Overture footers for the row-group manifest and ~80 MB of
+  road data per course bbox, plus DEM tiles. All of it is cached, so a second run is near-instant;
+  warm, a full-distance course is two to four minutes, almost all of it routing. Every network read
+  retries with exponential backoff, because a rebuild should not lose eight minutes of work to one
+  dropped connection.
 
 ---
 

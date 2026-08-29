@@ -36,6 +36,7 @@ from ..geo import Point
 from .base import RoadSource, RoadWay, SourceError
 from .cache import BlobCache
 from .http_range import HttpRangeFile
+from .retry import check_status, with_retry
 from .wkb import read_exterior_rings, read_linestring
 
 _SEGMENT_COLUMNS = [
@@ -82,8 +83,9 @@ class OvertureRoadSource(RoadSource):
             )
             if token:
                 url += "&continuation-token=" + urllib.parse.quote(token, safe="")
-            resp = self._session.get(url, timeout=self._timeout)
-            resp.raise_for_status()
+            resp = with_retry(
+                lambda: check_status(self._session.get(url, timeout=self._timeout))
+            )
             body = resp.text
             keys.extend(k for k in re.findall(r"<Key>(.*?)</Key>", body) if k.endswith(".parquet"))
             m = re.search(r"<NextContinuationToken>(.*?)</NextContinuationToken>", body)
@@ -148,6 +150,35 @@ class OvertureRoadSource(RoadSource):
     # ------------------------------------------------------------------ reads
 
     def _read_bbox(self, prefix: str, bbox, columns: Sequence[str]):
+        """Every row in `bbox`, cached.
+
+        A course bbox is roughly 80 MB of Parquet row groups. Caching the
+        assembled result rather than only the footers makes a re-run cost
+        nothing and immune to a dropped connection -- which matters, because the
+        determinism proof regenerates every course twice in a row.
+        """
+        import io
+
+        import pyarrow as pa
+        import pyarrow.compute as pc
+        import pyarrow.parquet as _pq
+
+        cache_key = "|".join([
+            self.bucket_url, prefix,
+            ",".join(f"{v:.6f}" for v in bbox),
+            ",".join(columns), "bbox-v1",
+        ])
+        cached = self._cache.get("overture-bbox", cache_key)
+        if cached is not None:
+            return _pq.read_table(io.BytesIO(cached))
+
+        table = self._read_bbox_uncached(prefix, bbox, columns)
+        buf = io.BytesIO()
+        _pq.write_table(table, buf, compression="zstd")
+        self._cache.put("overture-bbox", cache_key, buf.getvalue())
+        return table
+
+    def _read_bbox_uncached(self, prefix: str, bbox, columns: Sequence[str]):
         import pyarrow as pa
         import pyarrow.compute as pc
 

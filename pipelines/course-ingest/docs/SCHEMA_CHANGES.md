@@ -1,8 +1,9 @@
 # Course bundle schema changes — replacement text for `RaceOS_Build_Spec.md`
 
 **Audience:** the backend build session (milestone 3, "Courses + bundles, read-only").
-**Status:** decided and implemented. `pipelines/course-ingest` already emits every field below,
-and the nine seeded bundles in `out/bundles/` carry them.
+**Status:** decided and implemented. `pipelines/course-ingest` already emits every field below, and
+the three generated bundles in `out/bundles/` carry them. Six further courses have finished seed
+specs marked `status: pending` and will produce the same shape.
 
 This document is **exact replacement text**, not a description. Paste the marked blocks over the
 corresponding blocks in `RaceOS_Build_Spec.md`, and apply the migration at the end.
@@ -37,6 +38,10 @@ pipeline was built.
 **`barriers` jsonb shape:** `{name, leg, limit_minutes_from_start, km}`.
 **`aid_stations` jsonb shape:** `{leg, name, km, contents[], provenance}` — aid stations only. Transitions, special needs and distance markers are in `waypoints`; the solver's "one action per aid station" invariant depends on this array containing nothing else.
 **`waypoints` jsonb shape:** `{type, leg, name, km, provenance}` where `type ∈ transition | special_needs | distance_marker`. `km` is always kilometres; unit conversion is a frontend concern.
+**`surface_quality` on the swim leg** is a placeholder. The column is `NOT NULL` because it is
+meaningful on every leg the solver costs, and the solver reads it only for the bike
+(`SOLVER_MODEL.md` §I.2.2). The pipeline writes `typical_road` on the swim row; do not read it
+there.
 **`segments` jsonb shape:** `{ordinal, leg, name, from_km, to_km, net_gradient, elevation_gain_m, surface_quality, name_source}`. `ordinal` is unique and ascending across the whole bundle in leg order `SWIM, BIKE, RUN`. `net_gradient` is a fraction, not a percentage. `name_source ∈ OSM_WAY | DERIVED_TERRAIN` — whether the segment took its name from an OpenStreetMap way or from its own terrain band.
 **`elevation_source`** — `terrain` for every bundle this system produces. `SOLVER_MODEL.md` §1.2 raises `BundleIncomplete` for any other value; elevation is never GPS or barometric.
 **`attribution`** — the ODbL attribution string, assembled from the licences the underlying ways actually carry. Must be displayed wherever the derived data is (see §4 below).
