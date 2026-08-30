@@ -17,6 +17,7 @@ script and nothing else.
 This script imports nothing from `course_ingest`. That is deliberate and is
 asserted by `pipelines/course-ingest/tests/test_golden_isolation.py`.
 """
+
 from __future__ import annotations
 
 import json
@@ -130,8 +131,13 @@ def truncate(segments, target_km):
 
 def aid(leg, kms, contents):
     return [
-        {"leg": leg, "name": f"{leg.title()} aid {i}", "km": km, "contents": contents,
-         "provenance": "ESTIMATED"}
+        {
+            "leg": leg,
+            "name": f"{leg.title()} aid {i}",
+            "km": km,
+            "contents": contents,
+            "provenance": "ESTIMATED",
+        }
         for i, km in enumerate(kms, start=1)
     ]
 
@@ -149,10 +155,26 @@ BIKE_CONTENTS = ["water", "sports_drink", "banana", "energy_bar"]
 RUN_CONTENTS = ["water", "sports_drink", "cola", "energy_gel"]
 
 
-def build(course_id, name, distance_type, lat, lng, tz, swim_m, swim_kind,
-          bike_segments, bike_surface, bike_mean, bike_declared_gain,
-          run_segments, run_mean, run_declared_gain, barriers,
-          bike_aid_km, run_aid_step):
+def build(
+    course_id,
+    name,
+    distance_type,
+    lat,
+    lng,
+    tz,
+    swim_m,
+    swim_kind,
+    bike_segments,
+    bike_surface,
+    bike_mean,
+    bike_declared_gain,
+    run_segments,
+    run_mean,
+    run_declared_gain,
+    barriers,
+    bike_aid_km,
+    run_aid_step,
+):
     bike_nodes = shift_to_mean(leg_series(bike_segments), bike_mean)
     run_nodes = shift_to_mean(leg_series(run_segments), run_mean)
     bike_km = round(sum(s["km"] for s in bike_segments), 4)
@@ -162,14 +184,21 @@ def build(course_id, name, distance_type, lat, lng, tz, swim_m, swim_kind,
         out = []
         cursor = 0.0
         for i, seg in enumerate(seglist, start=1):
-            out.append({
-                "ordinal": i, "leg": leg, "name": seg["name"],
-                "from_km": round(cursor, 4), "to_km": round(cursor + seg["km"], 4),
-                "net_gradient": seg["net_gradient"],
-                "elevation_gain_m": round(max(0.0, seg["net_gradient"]) * seg["km"] * 1000.0, 2),
-                "surface_quality": bike_surface if leg == "BIKE" else "typical_road",
-                "name_source": "SYNTHETIC",
-            })
+            out.append(
+                {
+                    "ordinal": i,
+                    "leg": leg,
+                    "name": seg["name"],
+                    "from_km": round(cursor, 4),
+                    "to_km": round(cursor + seg["km"], 4),
+                    "net_gradient": seg["net_gradient"],
+                    "elevation_gain_m": round(
+                        max(0.0, seg["net_gradient"]) * seg["km"] * 1000.0, 2
+                    ),
+                    "surface_quality": bike_surface if leg == "BIKE" else "typical_road",
+                    "name_source": "SYNTHETIC",
+                }
+            )
             cursor += seg["km"]
         return out
 
@@ -185,22 +214,34 @@ def build(course_id, name, distance_type, lat, lng, tz, swim_m, swim_kind,
         ),
         "name": name,
         "distance_type": distance_type,
-        "lat": lat, "lng": lng, "timezone": tz,
+        "lat": lat,
+        "lng": lng,
+        "timezone": tz,
         "elevation_source": "terrain",
         "node_spacing_m": NODE_SPACING_M,
         "legs": {
-            "SWIM": {"distance_m": swim_m, "water": swim_kind, "elevation_gain_m": 0.0,
-                     "nodes": [[0.0, 0.0], [float(swim_m), 0.0]]},
-            "BIKE": {"distance_m": round(bike_km * 1000.0, 1), "surface_quality": bike_surface,
-                     "mean_elevation_m": bike_mean,
-                     "elevation_gain_m": gain(bike_nodes),
-                     "declared_elevation_gain_m": bike_declared_gain,
-                     "nodes": [[s, h] for s, h in bike_nodes]},
-            "RUN": {"distance_m": round(run_km * 1000.0, 1), "surface_quality": "typical_road",
-                    "mean_elevation_m": run_mean,
-                    "elevation_gain_m": gain(run_nodes),
-                    "declared_elevation_gain_m": run_declared_gain,
-                    "nodes": [[s, h] for s, h in run_nodes]},
+            "SWIM": {
+                "distance_m": swim_m,
+                "water": swim_kind,
+                "elevation_gain_m": 0.0,
+                "nodes": [[0.0, 0.0], [float(swim_m), 0.0]],
+            },
+            "BIKE": {
+                "distance_m": round(bike_km * 1000.0, 1),
+                "surface_quality": bike_surface,
+                "mean_elevation_m": bike_mean,
+                "elevation_gain_m": gain(bike_nodes),
+                "declared_elevation_gain_m": bike_declared_gain,
+                "nodes": [[s, h] for s, h in bike_nodes],
+            },
+            "RUN": {
+                "distance_m": round(run_km * 1000.0, 1),
+                "surface_quality": "typical_road",
+                "mean_elevation_m": run_mean,
+                "elevation_gain_m": gain(run_nodes),
+                "declared_elevation_gain_m": run_declared_gain,
+                "nodes": [[s, h] for s, h in run_nodes],
+            },
         },
         "segments": segs(bike_segments, "BIKE") + segs(run_segments, "RUN"),
         "barriers": barriers,
@@ -218,62 +259,174 @@ def main() -> int:
         {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 960.0, "km": 42.195},
     ]
     courses = [
-        build("C-TRAM", "Serra de Tramuntana", "full", 39.85, 3.12, "Europe/Madrid",
-              3800, "sea", C_TRAM_BIKE, "typical_road", 120.0, 2100,
-              lap_segments(10.549, [0.004, -0.004, 0.003, -0.003], 4, "Tramuntana run"),
-              25.0, 180, tram_barriers, [20, 45, 70, 95, 120, 145, 170], 2.1),
-        build("C-FLAT", "Costa Plana", "full", 39.85, 3.12, "Europe/Madrid",
-              3800, "sea", C_FLAT_BIKE, "smooth_asphalt", 15.0, 220,
-              lap_segments(10.54875, [0.0, 0.0, 0.0, 0.0], 4, "Costa Plana run"),
-              15.0, 0, tram_barriers, [20, 45, 70, 95, 120, 145, 170], 2.1),
-        build("C-ALTA", "Alta Ruta", "full", 46.52, 7.98, "Europe/Zurich",
-              3800, "lake", C_ALTA_BIKE, "typical_road", 980.0, 3900,
-              scaled_lap_segments(42.195, 4, 4, 620.0, "Alta Ruta run"),
-              640.0, 620,
-              [
-                  {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 150.0, "km": 3.8},
-                  {"name": "bike_cutoff", "leg": "BIKE", "limit_minutes_from_start": 690.0, "km": 176.0},
-                  {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 1020.0, "km": 42.195},
-              ],
-              [20, 45, 70, 95, 120, 145, 170], 2.1),
-        build("C-HALF", "Tramuntana 70.3", "half", 39.85, 3.12, "Europe/Madrid",
-              1900, "sea", truncate(C_TRAM_BIKE, 90.1), "typical_road", 120.0, 1050,
-              lap_segments(10.55, [0.004, -0.004, 0.003, -0.003], 2, "Tramuntana 70.3 run"),
-              25.0, 90,
-              [
-                  {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 70.0, "km": 1.9},
-                  {"name": "bike_cutoff", "leg": "BIKE", "limit_minutes_from_start": 330.0, "km": 90.1},
-                  {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 510.0, "km": 21.1},
-              ],
-              [20, 45, 70], 2.1),
-        build("C-OLY", "Alcudia Olympic", "olympic", 39.85, 3.12, "Europe/Madrid",
-              1500, "sea",
-              [{"name": "Olympic out", "km": 20.0, "net_gradient": 0.002},
-               {"name": "Olympic back", "km": 20.0, "net_gradient": -0.002}],
-              "typical_road", 15.0, 80,
-              [{"name": "Olympic run out", "km": 5.0, "net_gradient": 0.0},
-               {"name": "Olympic run back", "km": 5.0, "net_gradient": 0.0}],
-              15.0, 0,
-              [
-                  {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 50.0, "km": 1.5},
-                  {"name": "bike_cutoff", "leg": "BIKE", "limit_minutes_from_start": 170.0, "km": 40.0},
-                  {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 240.0, "km": 10.0},
-              ],
-              [20], 2.5),
-        build("C-SPR", "Alcudia Sprint", "sprint", 39.85, 3.12, "Europe/Madrid",
-              750, "sea",
-              [{"name": "Sprint out", "km": 10.0, "net_gradient": 0.002},
-               {"name": "Sprint back", "km": 10.0, "net_gradient": -0.002}],
-              "typical_road", 15.0, 40,
-              [{"name": "Sprint run out", "km": 2.5, "net_gradient": 0.0},
-               {"name": "Sprint run back", "km": 2.5, "net_gradient": 0.0}],
-              15.0, 0,
-              [
-                  {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 30.0, "km": 0.75},
-                  {"name": "bike_cutoff", "leg": "BIKE", "limit_minutes_from_start": 95.0, "km": 20.0},
-                  {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 130.0, "km": 5.0},
-              ],
-              [10], 2.5),
+        build(
+            "C-TRAM",
+            "Serra de Tramuntana",
+            "full",
+            39.85,
+            3.12,
+            "Europe/Madrid",
+            3800,
+            "sea",
+            C_TRAM_BIKE,
+            "typical_road",
+            120.0,
+            2100,
+            lap_segments(10.549, [0.004, -0.004, 0.003, -0.003], 4, "Tramuntana run"),
+            25.0,
+            180,
+            tram_barriers,
+            [20, 45, 70, 95, 120, 145, 170],
+            2.1,
+        ),
+        build(
+            "C-FLAT",
+            "Costa Plana",
+            "full",
+            39.85,
+            3.12,
+            "Europe/Madrid",
+            3800,
+            "sea",
+            C_FLAT_BIKE,
+            "smooth_asphalt",
+            15.0,
+            220,
+            lap_segments(10.54875, [0.0, 0.0, 0.0, 0.0], 4, "Costa Plana run"),
+            15.0,
+            0,
+            tram_barriers,
+            [20, 45, 70, 95, 120, 145, 170],
+            2.1,
+        ),
+        build(
+            "C-ALTA",
+            "Alta Ruta",
+            "full",
+            46.52,
+            7.98,
+            "Europe/Zurich",
+            3800,
+            "lake",
+            C_ALTA_BIKE,
+            "typical_road",
+            980.0,
+            3900,
+            scaled_lap_segments(42.195, 4, 4, 620.0, "Alta Ruta run"),
+            640.0,
+            620,
+            [
+                {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 150.0, "km": 3.8},
+                {
+                    "name": "bike_cutoff",
+                    "leg": "BIKE",
+                    "limit_minutes_from_start": 690.0,
+                    "km": 176.0,
+                },
+                {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 1020.0, "km": 42.195},
+            ],
+            [20, 45, 70, 95, 120, 145, 170],
+            2.1,
+        ),
+        build(
+            "C-HALF",
+            "Tramuntana 70.3",
+            "half",
+            39.85,
+            3.12,
+            "Europe/Madrid",
+            1900,
+            "sea",
+            truncate(C_TRAM_BIKE, 90.1),
+            "typical_road",
+            120.0,
+            1050,
+            lap_segments(10.55, [0.004, -0.004, 0.003, -0.003], 2, "Tramuntana 70.3 run"),
+            25.0,
+            90,
+            [
+                {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 70.0, "km": 1.9},
+                {
+                    "name": "bike_cutoff",
+                    "leg": "BIKE",
+                    "limit_minutes_from_start": 330.0,
+                    "km": 90.1,
+                },
+                {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 510.0, "km": 21.1},
+            ],
+            [20, 45, 70],
+            2.1,
+        ),
+        build(
+            "C-OLY",
+            "Alcudia Olympic",
+            "olympic",
+            39.85,
+            3.12,
+            "Europe/Madrid",
+            1500,
+            "sea",
+            [
+                {"name": "Olympic out", "km": 20.0, "net_gradient": 0.002},
+                {"name": "Olympic back", "km": 20.0, "net_gradient": -0.002},
+            ],
+            "typical_road",
+            15.0,
+            80,
+            [
+                {"name": "Olympic run out", "km": 5.0, "net_gradient": 0.0},
+                {"name": "Olympic run back", "km": 5.0, "net_gradient": 0.0},
+            ],
+            15.0,
+            0,
+            [
+                {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 50.0, "km": 1.5},
+                {
+                    "name": "bike_cutoff",
+                    "leg": "BIKE",
+                    "limit_minutes_from_start": 170.0,
+                    "km": 40.0,
+                },
+                {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 240.0, "km": 10.0},
+            ],
+            [20],
+            2.5,
+        ),
+        build(
+            "C-SPR",
+            "Alcudia Sprint",
+            "sprint",
+            39.85,
+            3.12,
+            "Europe/Madrid",
+            750,
+            "sea",
+            [
+                {"name": "Sprint out", "km": 10.0, "net_gradient": 0.002},
+                {"name": "Sprint back", "km": 10.0, "net_gradient": -0.002},
+            ],
+            "typical_road",
+            15.0,
+            40,
+            [
+                {"name": "Sprint run out", "km": 2.5, "net_gradient": 0.0},
+                {"name": "Sprint run back", "km": 2.5, "net_gradient": 0.0},
+            ],
+            15.0,
+            0,
+            [
+                {"name": "swim_exit", "leg": "SWIM", "limit_minutes_from_start": 30.0, "km": 0.75},
+                {
+                    "name": "bike_cutoff",
+                    "leg": "BIKE",
+                    "limit_minutes_from_start": 95.0,
+                    "km": 20.0,
+                },
+                {"name": "finish", "leg": "RUN", "limit_minutes_from_start": 130.0, "km": 5.0},
+            ],
+            [10],
+            2.5,
+        ),
     ]
 
     for course in courses:

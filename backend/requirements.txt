@@ -1,0 +1,49 @@
+# RaceOS backend — runtime dependencies.
+#
+# Installed directly by Render's native Python runtime (no Docker). Pinned to
+# exact versions so a deploy installs what the test suite was proven against.
+#
+# Deliberately absent, and their absence is asserted by
+# tests/unit/test_dependency_boundaries.py:
+#   - redis / celery / kombu / flower  — V1 has no queue and no broker
+#   - sentry-sdk                        — structured stdout logging instead
+#   - any Supabase auth SDK             — we issue our own RS256 JWTs
+#   - any athlete-data provider SDK     — permanently out of scope (Part 0.4 C1)
+
+# --- web -------------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+gunicorn==23.0.0
+python-multipart==0.0.20
+
+# --- config & validation ---------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+
+# --- database --------------------------------------------------------------
+SQLAlchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+GeoAlchemy2==0.16.0
+
+# --- auth ------------------------------------------------------------------
+argon2-cffi==23.1.0
+PyJWT[crypto]==2.10.1
+itsdangerous==2.2.0
+
+# --- external services (allowlist only) ------------------------------------
+# Stripe (payments), Supabase Storage over its S3-compatible API, Open-Meteo
+# (no key, plain HTTP). No other third-party service is contacted.
+stripe==11.4.1
+httpx==0.28.1
+
+# --- files, geometry, exports ----------------------------------------------
+garmin-fit-sdk==21.158.0
+gpxpy==1.6.2
+lxml==5.3.0
+shapely==2.0.6
+WeasyPrint==63.1
+icalendar==6.1.0
+pywebpush==2.0.3
+Pillow==11.0.0

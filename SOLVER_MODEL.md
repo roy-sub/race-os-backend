@@ -2298,8 +2298,9 @@ expectation. They are given below.
 
 **`C-TRAM` — "Serra de Tramuntana" (fictional), full distance.**
 `lat 39.85, lng 3.12, timezone Europe/Madrid`. Swim 3800 m sea. Bike 180.2 km,
-`surface_quality = typical_road`, mean elevation 120 m, 2100 m gain. Run 42.195 km, 180 m gain, mean
-elevation 25 m. Bike segments, in order:
+`surface_quality = typical_road`, mean elevation 120 m, **1518 m ascent / 762 m descent** (both derived
+from the segment gradients below; the elevation series reproduces them exactly). Run 42.195 km,
+**74 m ascent / 74 m descent**, mean elevation 25 m. Bike segments, in order:
 
 | # | Name | km | Net gradient |
 |---|---|---|---|
@@ -2322,13 +2323,13 @@ Aid stations: bike at km 20, 45, 70, 95, 120, 145, 170; run at every 2.1 km (20 
 Elevation series: 100 m node spacing, generated to reproduce each segment's net gradient exactly.
 
 **`C-FLAT` — "Costa Plana" (fictional), full distance, flat.** Same lat/lng/timezone, same swim, same
-barriers. Bike 180.0 km, 220 m gain, `smooth_asphalt`, mean elevation 15 m, eight segments each 22.5 km
-with gradients `[+0.001, −0.001, +0.002, −0.002, +0.001, −0.001, +0.002, −0.002]`. Run 42.195 km flat
+barriers. Bike 180.0 km, **135 m ascent / 135 m descent**, `smooth_asphalt`, mean elevation 15 m,
+eight segments each 22.5 km with gradients `[+0.001, −0.001, +0.002, −0.002, +0.001, −0.001, +0.002, −0.002]`. Run 42.195 km flat
 (all segment gradients 0.000).
 
 **`C-ALTA` — "Alta Ruta" (fictional), full distance, mountainous.** `lat 46.52, lng 7.98,
-timezone Europe/Zurich`. Swim 3800 m lake. Bike 176.0 km, 3900 m gain, `typical_road`, mean elevation
-980 m, six segments: `[28.0 km +0.004, 21.0 km +0.071, 18.0 km −0.062, 34.0 km +0.008, 26.0 km +0.065,
+timezone Europe/Zurich`. Swim 3800 m lake. Bike 176.0 km, **3565 m ascent / 2635 m descent**,
+`typical_road`, mean elevation 980 m, six segments: `[28.0 km +0.004, 21.0 km +0.071, 18.0 km −0.062, 34.0 km +0.008, 26.0 km +0.065,
 49.0 km −0.031]`. Run 42.195 km, 620 m gain, mean elevation 640 m.
 Barriers: `swim_exit 150`, `bike_cutoff 690`, `finish 1020`.
 
@@ -2559,6 +2560,7 @@ number, per the "do not invent physiology" rule.
 | **D-4** | `conditions` categorical, so the globe offset stepped | **`forecast.cloud_cover_pct`** (§F.3). The environment model is now continuous in all three of temperature, humidity and cloud when the field is supplied |
 | **D-7** | Threshold definitions unconfirmed | **Decided** (§2): run = one-hour pace, swim = CSS from the 400/200 pair. §2.5 specifies all three entry routes; §4.4 was rewritten because CSS is an asymptote and the previous Riegel anchoring was wrong by ~2.3% at full distance |
 | **D-8** | Infeasibility reported the tightest barrier | **Changed to earliest missed** (§3.3), with `tightest_barrier` retained for diagnostics. Contract change specified in §F.5 |
+| **D-14** | §B.1 declared each golden course's elevation gain twice — once constructively (segment gradients plus the "reproduce each net gradient exactly" rule) and once as an aggregate — and the two disagreed on four legs, by up to −59% | **Closed. The constructive rule is authoritative**; the aggregates above were wrong and are corrected in §B.1 to state ascent and descent separately. A segment's `elevation_gain_m` is `Σ max(0, h_{j+1} − h_j)` over the delivered nodes (§1.1), derived from the node series, never from a stored total. Raised and evidenced by Session B in `pipelines/course-ingest/docs/GOLDEN_FIXTURE_DISCREPANCY.md`; the fixtures already followed the constructive rule and carry both figures as `elevation_gain_m` and `declared_elevation_gain_m` |
 
 ### Still open
 

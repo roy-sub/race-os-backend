@@ -1,0 +1,135 @@
+"""Every ORM model, imported so Alembic's autogenerate sees the full metadata.
+
+Importing here rather than in ``env.py`` keeps the migration environment from
+needing to know the module layout, and means a model file that is never
+imported cannot silently drop out of a migration.
+"""
+
+from __future__ import annotations
+
+from raceos.db.base import Base
+from raceos.db.models.billing import (
+    Invoice,
+    PriceCatalogEntry,
+    Purchase,
+    Refund,
+    Subscription,
+)
+from raceos.db.models.coach import CoachAthleteLink, CoachNote, ShareLink, ShareLinkOpen
+from raceos.db.models.course import (
+    Course,
+    CourseBundle,
+    CourseBundleDiff,
+    CourseBundleLeg,
+    Race,
+)
+from raceos.db.models.identity import (
+    AdminRoleAssignment,
+    Constraint,
+    ConstraintHistory,
+    EmailVerificationToken,
+    PasswordResetToken,
+    Session,
+    User,
+)
+from raceos.db.models.ops import (
+    AdminRoleAudit,
+    AuditLog,
+    CacheEntry,
+    CrowdReport,
+    CrowdReportUpload,
+    EmailMessage,
+    FunnelEvent,
+    IdempotencyKey,
+    Incident,
+    JobRun,
+    KpiSnapshot,
+    Notification,
+    NotificationPreference,
+    PushSubscription,
+    RateLimitCounter,
+    ServiceHealth,
+    SupportAccessGrant,
+)
+from raceos.db.models.plan import (
+    OverrideEvent,
+    Plan,
+    PlanAidAction,
+    PlanBag,
+    PlanBagItem,
+    PlanConstraintRef,
+    PlanDriftEvent,
+    PlanFuelling,
+    PlanGate,
+    PlanSegment,
+    PlanSplit,
+    SolveJob,
+    SolveTiming,
+)
+from raceos.db.models.postrace import (
+    AnalysisAction,
+    AnalysisCalibration,
+    AnalysisCompareRow,
+    PostRaceAnalysis,
+    PostRaceFile,
+)
+
+__all__ = [
+    "AdminRoleAssignment",
+    "AdminRoleAudit",
+    "AnalysisAction",
+    "AnalysisCalibration",
+    "AnalysisCompareRow",
+    "AuditLog",
+    "Base",
+    "CacheEntry",
+    "CoachAthleteLink",
+    "CoachNote",
+    "Constraint",
+    "ConstraintHistory",
+    "Course",
+    "CourseBundle",
+    "CourseBundleDiff",
+    "CourseBundleLeg",
+    "CrowdReport",
+    "CrowdReportUpload",
+    "EmailMessage",
+    "EmailVerificationToken",
+    "FunnelEvent",
+    "IdempotencyKey",
+    "Incident",
+    "Invoice",
+    "JobRun",
+    "KpiSnapshot",
+    "Notification",
+    "NotificationPreference",
+    "OverrideEvent",
+    "PasswordResetToken",
+    "Plan",
+    "PlanAidAction",
+    "PlanBag",
+    "PlanBagItem",
+    "PlanConstraintRef",
+    "PlanDriftEvent",
+    "PlanFuelling",
+    "PlanGate",
+    "PlanSegment",
+    "PlanSplit",
+    "PostRaceAnalysis",
+    "PostRaceFile",
+    "PriceCatalogEntry",
+    "Purchase",
+    "PushSubscription",
+    "Race",
+    "RateLimitCounter",
+    "Refund",
+    "ServiceHealth",
+    "Session",
+    "ShareLink",
+    "ShareLinkOpen",
+    "SolveJob",
+    "SolveTiming",
+    "Subscription",
+    "SupportAccessGrant",
+    "User",
+]

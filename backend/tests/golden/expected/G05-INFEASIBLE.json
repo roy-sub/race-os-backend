@@ -1,0 +1,17 @@
+{
+  "case_id": "G05-INFEASIBLE",
+  "course_id": "C-TRAM",
+  "infeasibility": {
+    "barrier": "finish",
+    "levers": [
+      "improve_run_pace",
+      "raise_ftp"
+    ],
+    "miss_minutes": "90.5",
+    "tightest_barrier": "finish",
+    "tightest_miss_minutes": "90.5"
+  },
+  "schema_version": 2,
+  "solve_input_hash": "b75f1ba5078010f1341a0aee691843b3681fb2b3fef7a47d174befa83542e49c",
+  "verdict": "infeasible"
+}

@@ -1,0 +1,917 @@
+{
+  "case_id": "G06-TIGHT",
+  "course_id": "C-TRAM",
+  "output": {
+    "aid_actions": [
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "153.62543304537596",
+        "at_km": "20.0",
+        "cumulative_carb_g": "44.657756872892904",
+        "leg": "BIKE",
+        "ordinal": 1,
+        "station_name": "Bike aid 1"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "220.42146611968604",
+        "at_km": "45.0",
+        "cumulative_carb_g": "105.88745385767714",
+        "leg": "BIKE",
+        "ordinal": 2,
+        "station_name": "Bike aid 2"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "322.2859747897874",
+        "at_km": "70.0",
+        "cumulative_carb_g": "199.26325347193674",
+        "leg": "BIKE",
+        "ordinal": 3,
+        "station_name": "Bike aid 3"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "415.02808834763835",
+        "at_km": "95.0",
+        "cumulative_carb_g": "284.2768575666334",
+        "leg": "BIKE",
+        "ordinal": 4,
+        "station_name": "Bike aid 4"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "470.4468209206042",
+        "at_km": "120.0",
+        "cumulative_carb_g": "335.0773624251854",
+        "leg": "BIKE",
+        "ordinal": 5,
+        "station_name": "Bike aid 5"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "528.1918530092499",
+        "at_km": "145.0",
+        "cumulative_carb_g": "388.01030850644406",
+        "leg": "BIKE",
+        "ordinal": 6,
+        "station_name": "Bike aid 6"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "586.9965969857733",
+        "at_km": "170.0",
+        "cumulative_carb_g": "441.91465715159046",
+        "leg": "BIKE",
+        "ordinal": 7,
+        "station_name": "Bike aid 7"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "632.6842563925255",
+        "at_km": "2.1",
+        "cumulative_carb_g": "476.46167827444674",
+        "leg": "RUN",
+        "ordinal": 8,
+        "station_name": "Run aid 1"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "649.3954469954174",
+        "at_km": "4.2",
+        "cumulative_carb_g": "491.7802696604309",
+        "leg": "RUN",
+        "ordinal": 9,
+        "station_name": "Run aid 2"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "666.1532862726724",
+        "at_km": "6.3",
+        "cumulative_carb_g": "507.141622331248",
+        "leg": "RUN",
+        "ordinal": 10,
+        "station_name": "Run aid 3"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "683.0642501239827",
+        "at_km": "8.4",
+        "cumulative_carb_g": "522.6433391949491",
+        "leg": "RUN",
+        "ordinal": 11,
+        "station_name": "Run aid 4"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "699.7126108386784",
+        "at_km": "10.5",
+        "cumulative_carb_g": "537.9043365167535",
+        "leg": "RUN",
+        "ordinal": 12,
+        "station_name": "Run aid 5"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "716.9207700965336",
+        "at_km": "12.6",
+        "cumulative_carb_g": "553.6784825031208",
+        "leg": "RUN",
+        "ordinal": 13,
+        "station_name": "Run aid 6"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "733.6479619736756",
+        "at_km": "14.7",
+        "cumulative_carb_g": "569.0117417238342",
+        "leg": "RUN",
+        "ordinal": 14,
+        "station_name": "Run aid 7"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "750.3951901640745",
+        "at_km": "16.8",
+        "cumulative_carb_g": "584.3633675650333",
+        "leg": "RUN",
+        "ordinal": 15,
+        "station_name": "Run aid 8"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "767.3141378546192",
+        "at_km": "18.9",
+        "cumulative_carb_g": "599.8724029480325",
+        "leg": "RUN",
+        "ordinal": 16,
+        "station_name": "Run aid 9"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "783.9624985693149",
+        "at_km": "21.0",
+        "cumulative_carb_g": "615.133400269837",
+        "leg": "RUN",
+        "ordinal": 17,
+        "station_name": "Run aid 10"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "801.7629744752844",
+        "at_km": "23.1",
+        "cumulative_carb_g": "631.4505031836424",
+        "leg": "RUN",
+        "ordinal": 18,
+        "station_name": "Run aid 11"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "818.2552363483559",
+        "at_km": "25.2",
+        "cumulative_carb_g": "646.5684099006245",
+        "leg": "RUN",
+        "ordinal": 19,
+        "station_name": "Run aid 12"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "834.9196190659331",
+        "at_km": "27.3",
+        "cumulative_carb_g": "661.8440940584037",
+        "leg": "RUN",
+        "ordinal": 20,
+        "station_name": "Run aid 13"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "852.2485222397191",
+        "at_km": "29.4",
+        "cumulative_carb_g": "677.7289219677075",
+        "leg": "RUN",
+        "ordinal": 21,
+        "station_name": "Run aid 14"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "868.2571664549163",
+        "at_km": "31.5",
+        "cumulative_carb_g": "692.403512498305",
+        "leg": "RUN",
+        "ordinal": 22,
+        "station_name": "Run aid 15"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "885.9846635823583",
+        "at_km": "33.6",
+        "cumulative_carb_g": "708.6537181984601",
+        "leg": "RUN",
+        "ordinal": 23,
+        "station_name": "Run aid 16"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "902.5225770924346",
+        "at_km": "35.7",
+        "cumulative_carb_g": "723.8134722493634",
+        "leg": "RUN",
+        "ordinal": 24,
+        "station_name": "Run aid 17"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "919.1465971077262",
+        "at_km": "37.8",
+        "cumulative_carb_g": "739.0521572633806",
+        "leg": "RUN",
+        "ordinal": 25,
+        "station_name": "Run aid 18"
+      },
+      {
+        "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",
+        "at_clock_minutes": "936.5133366886773",
+        "at_km": "39.9",
+        "cumulative_carb_g": "754.9716685459192",
+        "leg": "RUN",
+        "ordinal": 26,
+        "station_name": "Run aid 19"
+      }
+    ],
+    "assumed_fields": [
+      "sweat_rate.measured_at_temp_c"
+    ],
+    "bags": [
+      {
+        "items": [
+          {
+            "name": "Wetsuit",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:wetsuit_legality",
+            "reason_text": "Water 21.0 °C: wetsuit legal."
+          },
+          {
+            "name": "Goggles",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "swim_threshold_pace",
+            "reason_text": "Swim leg planned at 2:27/100m."
+          },
+          {
+            "name": "Timing chip and race belt",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "Required to record a finish."
+          },
+          {
+            "name": "Spare goggles",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "A goggle failure ends a first-timer's race."
+          }
+        ],
+        "key": "morning",
+        "name": "Morning Clothes Bag",
+        "when_label": "Hand in before the swim start"
+      },
+      {
+        "items": [
+          {
+            "name": "Helmet",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:if_ceiling",
+            "reason_text": "Mandatory. Bike leg planned at 117 w."
+          },
+          {
+            "name": "Cycling shoes",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "bike_threshold_power",
+            "reason_text": "Bike target 117 w over 8.4 h."
+          },
+          {
+            "name": "Sunglasses",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:arm_cooler_threshold",
+            "reason_text": "Forecast 22 °C, partly cloudy."
+          },
+          {
+            "name": "Written transition sequence",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "First race: the order is easy to lose under pressure."
+          },
+          {
+            "name": "Spare tube, levers and CO2",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "No outside assistance is permitted on the bike leg."
+          }
+        ],
+        "key": "bike_t1",
+        "name": "T1 / Bike Bag",
+        "when_label": "Collected at swim exit"
+      },
+      {
+        "items": [
+          {
+            "name": "Running shoes",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "run_threshold_pace",
+            "reason_text": "Run target 7:59/km over 5.6 h."
+          },
+          {
+            "name": "Cap or visor",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:run_heat_clamp",
+            "reason_text": "Run in 19.4 °C WBGT."
+          },
+          {
+            "name": "Anti-chafe balm",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "Run leg planned at 5.6 h."
+          }
+        ],
+        "key": "run_t2",
+        "name": "T2 / Run Bag",
+        "when_label": "Collected at bike finish"
+      },
+      {
+        "items": [
+          {
+            "name": "Salt capsules",
+            "note": null,
+            "qty": "11",
+            "reason_constraint_key": "sodium_loss",
+            "reason_text": "800 mg·L⁻¹ sweat sodium at 1.13 L·h⁻¹ over 8.4 h on the bike."
+          },
+          {
+            "name": "Gels",
+            "note": "≈230 g of carbohydrate",
+            "qty": "10",
+            "reason_constraint_key": "gut_carb_ceiling",
+            "reason_text": "55 g·h⁻¹ over 8.4 h, half carried from here."
+          }
+        ],
+        "key": "bike_sn",
+        "name": "Bike Special Needs",
+        "when_label": "Bike leg midpoint"
+      },
+      {
+        "items": [
+          {
+            "name": "Head torch",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:dusk_buffer",
+            "reason_text": "Projected finish 22:54 is within 15 min of civil dusk 20:17."
+          },
+          {
+            "name": "Salt capsules",
+            "note": null,
+            "qty": "7",
+            "reason_constraint_key": "sodium_loss",
+            "reason_text": "800 mg·L⁻¹ sweat sodium at 1.13 L·h⁻¹ over 5.6 h on the run."
+          },
+          {
+            "name": "Gels",
+            "note": "≈155 g of carbohydrate",
+            "qty": "7",
+            "reason_constraint_key": "gut_carb_ceiling",
+            "reason_text": "55 g·h⁻¹ over 5.6 h, half carried from here."
+          }
+        ],
+        "key": "run_sn",
+        "name": "Run Special Needs",
+        "when_label": "Run leg midpoint"
+      }
+    ],
+    "binding_constraint_key": "barrier:finish",
+    "constraint_refs": [
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "swim_threshold_pace",
+        "name": "Swim Threshold Pace",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "/100m",
+        "value": "133"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "bike_threshold_power",
+        "name": "Bike Threshold Power",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "w",
+        "value": "176"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "run_threshold_pace",
+        "name": "Run Threshold Pace",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "/km",
+        "value": "363"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "weight",
+        "name": "Weight",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "kg",
+        "value": "77"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "sweat_rate",
+        "name": "Sweat Rate",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "L/hr",
+        "value": "1"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "sodium_loss",
+        "name": "Sodium Loss",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "mg/L",
+        "value": "800"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "gut_carb_ceiling",
+        "name": "Gut Carb Ceiling",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "g/hr",
+        "value": "55"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "caffeine_tolerance",
+        "name": "Caffeine Tolerance",
+        "override_text": "",
+        "source_label": "estimated",
+        "unit": "mg",
+        "value": "200"
+      }
+    ],
+    "feasibility": "TIGHT",
+    "fuelling": {
+      "binding_caffeine_key": "caffeine_tolerance",
+      "binding_carb_key": "gut_carb_ceiling",
+      "binding_fluid_key": "sweat_rate",
+      "binding_sodium_key": "sodium_loss",
+      "caffeine_mg_total": 200,
+      "carb_g_per_hr": 55,
+      "fluid_ml_per_hr": 850,
+      "overridden": false,
+      "requires_multiple_transportable": false,
+      "sodium_mg_per_hr": 730,
+      "total_carb_g": 771
+    },
+    "gates": [
+      {
+        "eta_minutes": "92.9",
+        "leg": "SWIM",
+        "limit_minutes": "140.0",
+        "load_pct": "66.4",
+        "margin_minutes": "47.1",
+        "name": "swim_exit",
+        "state": "clear"
+      },
+      {
+        "eta_minutes": "470.4",
+        "leg": "BIKE",
+        "limit_minutes": "510.0",
+        "load_pct": "92.2",
+        "margin_minutes": "39.6",
+        "name": "bike_km_120",
+        "state": "clear"
+      },
+      {
+        "eta_minutes": "607.5",
+        "leg": "BIKE",
+        "limit_minutes": "630.0",
+        "load_pct": "96.4",
+        "margin_minutes": "22.5",
+        "name": "bike_cutoff",
+        "state": "clear"
+      },
+      {
+        "eta_minutes": "954.0",
+        "leg": "RUN",
+        "limit_minutes": "960.0",
+        "load_pct": "99.4",
+        "margin_minutes": "6.0",
+        "name": "finish",
+        "state": "tight"
+      }
+    ],
+    "infeasibility": null,
+    "margin_state": "tight",
+    "projected_minutes": "954.0",
+    "segments": [
+      {
+        "from_km": "0.0",
+        "leg": "BIKE",
+        "name": "Coastal out",
+        "note": "",
+        "ordinal": 1,
+        "target_minutes": "58.5",
+        "target_pace_sec_per_km": null,
+        "target_watts": 114,
+        "terrain_desc": "Flat",
+        "to_km": "24.0"
+      },
+      {
+        "from_km": "24.0",
+        "leg": "BIKE",
+        "name": "Sa Pobla flats",
+        "note": "",
+        "ordinal": 2,
+        "target_minutes": "46.5",
+        "target_pace_sec_per_km": null,
+        "target_watts": 115,
+        "terrain_desc": "Flat",
+        "to_km": "42.0"
+      },
+      {
+        "from_km": "42.0",
+        "leg": "BIKE",
+        "name": "Femenia approach",
+        "note": "",
+        "ordinal": 3,
+        "target_minutes": "33.7",
+        "target_pace_sec_per_km": null,
+        "target_watts": 120,
+        "terrain_desc": "Rolling +1.8%",
+        "to_km": "51.6"
+      },
+      {
+        "from_km": "51.6",
+        "leg": "BIKE",
+        "name": "Coll de Femenia",
+        "note": "",
+        "ordinal": 4,
+        "target_minutes": "63.3",
+        "target_pace_sec_per_km": null,
+        "target_watts": 126,
+        "terrain_desc": "Climb 5.8%",
+        "to_km": "60.0"
+      },
+      {
+        "from_km": "60.0",
+        "leg": "BIKE",
+        "name": "Femenia descent",
+        "note": "",
+        "ordinal": 5,
+        "target_minutes": "7.3",
+        "target_pace_sec_per_km": null,
+        "target_watts": 102,
+        "terrain_desc": "Descent -5.5%",
+        "to_km": "67.2"
+      },
+      {
+        "from_km": "67.2",
+        "leg": "BIKE",
+        "name": "Orient valley",
+        "note": "",
+        "ordinal": 6,
+        "target_minutes": "60.7",
+        "target_pace_sec_per_km": null,
+        "target_watts": 117,
+        "terrain_desc": "Rolling +1.0%",
+        "to_km": "88.2"
+      },
+      {
+        "from_km": "88.2",
+        "leg": "BIKE",
+        "name": "Coll d'Honor",
+        "note": "",
+        "ordinal": 7,
+        "target_minutes": "39.0",
+        "target_pace_sec_per_km": null,
+        "target_watts": 125,
+        "terrain_desc": "Climb 4.9%",
+        "to_km": "94.0"
+      },
+      {
+        "from_km": "94.0",
+        "leg": "BIKE",
+        "name": "Honor descent",
+        "note": "",
+        "ordinal": 8,
+        "target_minutes": "6.9",
+        "target_pace_sec_per_km": null,
+        "target_watts": 102,
+        "terrain_desc": "Descent -4.8%",
+        "to_km": "100.4"
+      },
+      {
+        "from_km": "100.4",
+        "leg": "BIKE",
+        "name": "Inland rollers",
+        "note": "",
+        "ordinal": 9,
+        "target_minutes": "65.8",
+        "target_pace_sec_per_km": null,
+        "target_watts": 116,
+        "terrain_desc": "Rolling +0.6%",
+        "to_km": "126.4"
+      },
+      {
+        "from_km": "126.4",
+        "leg": "BIKE",
+        "name": "Sencelles flats",
+        "note": "",
+        "ordinal": 10,
+        "target_minutes": "49.1",
+        "target_pace_sec_per_km": null,
+        "target_watts": 114,
+        "terrain_desc": "Flat",
+        "to_km": "148.4"
+      },
+      {
+        "from_km": "148.4",
+        "leg": "BIKE",
+        "name": "Return coastal",
+        "note": "",
+        "ordinal": 11,
+        "target_minutes": "52.2",
+        "target_pace_sec_per_km": null,
+        "target_watts": 115,
+        "terrain_desc": "Flat",
+        "to_km": "170.4"
+      },
+      {
+        "from_km": "170.4",
+        "leg": "BIKE",
+        "name": "Alcudia run-in",
+        "note": "",
+        "ordinal": 12,
+        "target_minutes": "19.5",
+        "target_pace_sec_per_km": null,
+        "target_watts": 112,
+        "terrain_desc": "Rolling -0.6%",
+        "to_km": "180.2"
+      },
+      {
+        "from_km": "0.0",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 1 q1",
+        "note": "",
+        "ordinal": 13,
+        "target_minutes": "21.6",
+        "target_pace_sec_per_km": 492,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "2.6372"
+      },
+      {
+        "from_km": "2.6372",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 1 q2",
+        "note": "",
+        "ordinal": 14,
+        "target_minutes": "20.8",
+        "target_pace_sec_per_km": 472,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "5.2745"
+      },
+      {
+        "from_km": "5.2745",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 1 q3",
+        "note": "",
+        "ordinal": 15,
+        "target_minutes": "21.3",
+        "target_pace_sec_per_km": 485,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "7.9117"
+      },
+      {
+        "from_km": "7.9117",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 1 q4",
+        "note": "",
+        "ordinal": 16,
+        "target_minutes": "20.9",
+        "target_pace_sec_per_km": 476,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "10.549"
+      },
+      {
+        "from_km": "10.549",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 2 q1",
+        "note": "",
+        "ordinal": 17,
+        "target_minutes": "21.6",
+        "target_pace_sec_per_km": 492,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "13.1862"
+      },
+      {
+        "from_km": "13.1862",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 2 q2",
+        "note": "",
+        "ordinal": 18,
+        "target_minutes": "20.8",
+        "target_pace_sec_per_km": 472,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "15.8235"
+      },
+      {
+        "from_km": "15.8235",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 2 q3",
+        "note": "",
+        "ordinal": 19,
+        "target_minutes": "21.3",
+        "target_pace_sec_per_km": 485,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "18.4607"
+      },
+      {
+        "from_km": "18.4607",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 2 q4",
+        "note": "",
+        "ordinal": 20,
+        "target_minutes": "20.9",
+        "target_pace_sec_per_km": 476,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "21.098"
+      },
+      {
+        "from_km": "21.098",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 3 q1",
+        "note": "",
+        "ordinal": 21,
+        "target_minutes": "22.4",
+        "target_pace_sec_per_km": 491,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "23.7353"
+      },
+      {
+        "from_km": "23.7353",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 3 q2",
+        "note": "",
+        "ordinal": 22,
+        "target_minutes": "20.0",
+        "target_pace_sec_per_km": 472,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "26.3725"
+      },
+      {
+        "from_km": "26.3725",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 3 q3",
+        "note": "",
+        "ordinal": 23,
+        "target_minutes": "22.1",
+        "target_pace_sec_per_km": 485,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "29.0098"
+      },
+      {
+        "from_km": "29.0098",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 3 q4",
+        "note": "",
+        "ordinal": 24,
+        "target_minutes": "20.1",
+        "target_pace_sec_per_km": 476,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "31.647"
+      },
+      {
+        "from_km": "31.647",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 4 q1",
+        "note": "",
+        "ordinal": 25,
+        "target_minutes": "22.4",
+        "target_pace_sec_per_km": 491,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "34.2843"
+      },
+      {
+        "from_km": "34.2843",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 4 q2",
+        "note": "",
+        "ordinal": 26,
+        "target_minutes": "20.0",
+        "target_pace_sec_per_km": 472,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "36.9215"
+      },
+      {
+        "from_km": "36.9215",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 4 q3",
+        "note": "",
+        "ordinal": 27,
+        "target_minutes": "22.1",
+        "target_pace_sec_per_km": 485,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "39.5588"
+      },
+      {
+        "from_km": "39.5588",
+        "leg": "RUN",
+        "name": "Tramuntana run lap 4 q4",
+        "note": "",
+        "ordinal": 28,
+        "target_minutes": "20.1",
+        "target_pace_sec_per_km": 476,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "42.196"
+      }
+    ],
+    "splits": [
+      {
+        "distance": "3.8",
+        "leg": "SWIM",
+        "note": "Wetsuit",
+        "split_minutes": "92.9",
+        "target_pace_or_power": "2:27",
+        "unit": "/100m"
+      },
+      {
+        "distance": "180.2",
+        "leg": "BIKE",
+        "note": "0.65 IF",
+        "split_minutes": "502.6",
+        "target_pace_or_power": "117",
+        "unit": "w"
+      },
+      {
+        "distance": "42.196",
+        "leg": "RUN",
+        "note": "Heat adjusted",
+        "split_minutes": "338.6",
+        "target_pace_or_power": "7:59",
+        "unit": "/km"
+      }
+    ],
+    "wetsuit_used": true,
+    "wetsuit_warning": false,
+    "worst_margin_minutes": "6.0"
+  },
+  "schema_version": 2,
+  "solve_input_hash": "d470c9b698cda2b8e1c51880e96959a62819aa42037156fc0bdc355f89618c61",
+  "verdict": "solved"
+}

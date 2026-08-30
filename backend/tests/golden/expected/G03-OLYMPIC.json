@@ -1,0 +1,387 @@
+{
+  "case_id": "G03-OLYMPIC",
+  "course_id": "C-OLY",
+  "output": {
+    "aid_actions": [
+      {
+        "action_text": "Take 51 g carb, 1000 ml fluid, 1500 mg sodium per hour.",
+        "at_clock_minutes": "56.76963553131644",
+        "at_km": "20.0",
+        "cumulative_carb_g": "26.639018430643215",
+        "leg": "BIKE",
+        "ordinal": 1,
+        "station_name": "Bike aid 1"
+      },
+      {
+        "action_text": "Take 51 g carb, 1000 ml fluid, 1500 mg sodium per hour.",
+        "at_clock_minutes": "97.75698291383705",
+        "at_km": "2.5",
+        "cumulative_carb_g": "60.69765878003742",
+        "leg": "RUN",
+        "ordinal": 2,
+        "station_name": "Run aid 1"
+      },
+      {
+        "action_text": "Take 51 g carb, 1000 ml fluid, 1500 mg sodium per hour.",
+        "at_clock_minutes": "108.36196318544123",
+        "at_km": "5.0",
+        "cumulative_carb_g": "69.77570073921729",
+        "leg": "RUN",
+        "ordinal": 3,
+        "station_name": "Run aid 2"
+      },
+      {
+        "action_text": "Take 51 g carb, 1000 ml fluid, 1500 mg sodium per hour.",
+        "at_clock_minutes": "118.96694345704539",
+        "at_km": "7.5",
+        "cumulative_carb_g": "78.85374269839716",
+        "leg": "RUN",
+        "ordinal": 4,
+        "station_name": "Run aid 3"
+      }
+    ],
+    "assumed_fields": [
+      "sweat_rate.measured_at_temp_c"
+    ],
+    "bags": [
+      {
+        "items": [
+          {
+            "name": "Wetsuit",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:wetsuit_legality",
+            "reason_text": "Water 21.0 °C: wetsuit legal."
+          },
+          {
+            "name": "Goggles",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "swim_threshold_pace",
+            "reason_text": "Swim leg planned at 1:28/100m."
+          },
+          {
+            "name": "Timing chip and race belt",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:first_timer_set",
+            "reason_text": "Required to record a finish."
+          }
+        ],
+        "key": "morning",
+        "name": "Morning Clothes Bag",
+        "when_label": "Hand in before the swim start"
+      },
+      {
+        "items": [
+          {
+            "name": "Helmet",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:if_ceiling",
+            "reason_text": "Mandatory. Bike leg planned at 241 w."
+          },
+          {
+            "name": "Cycling shoes",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "bike_threshold_power",
+            "reason_text": "Bike target 241 w over 1.0 h."
+          },
+          {
+            "name": "Sunglasses",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:arm_cooler_threshold",
+            "reason_text": "Forecast 22 °C, partly cloudy."
+          }
+        ],
+        "key": "bike_t1",
+        "name": "T1 / Bike Bag",
+        "when_label": "Collected at swim exit"
+      },
+      {
+        "items": [
+          {
+            "name": "Running shoes",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "run_threshold_pace",
+            "reason_text": "Run target 4:15/km over 0.7 h."
+          },
+          {
+            "name": "Cap or visor",
+            "note": null,
+            "qty": null,
+            "reason_constraint_key": "model:run_heat_clamp",
+            "reason_text": "Run in 19.4 °C WBGT."
+          }
+        ],
+        "key": "run_t2",
+        "name": "T2 / Run Bag",
+        "when_label": "Collected at bike finish"
+      },
+      {
+        "items": [
+          {
+            "name": "Salt capsules",
+            "note": null,
+            "qty": "3",
+            "reason_constraint_key": "sodium_loss",
+            "reason_text": "1250 mg·L⁻¹ sweat sodium at 1.59 L·h⁻¹ over 1.0 h on the bike."
+          },
+          {
+            "name": "Gels",
+            "note": "≈26 g of carbohydrate",
+            "qty": "2",
+            "reason_constraint_key": "gut_carb_ceiling",
+            "reason_text": "51 g·h⁻¹ over 1.0 h, half carried from here."
+          }
+        ],
+        "key": "bike_sn",
+        "name": "Bike Special Needs",
+        "when_label": "Bike leg midpoint"
+      },
+      {
+        "items": [
+          {
+            "name": "Salt capsules",
+            "note": null,
+            "qty": "2",
+            "reason_constraint_key": "sodium_loss",
+            "reason_text": "1250 mg·L⁻¹ sweat sodium at 1.59 L·h⁻¹ over 0.7 h on the run."
+          },
+          {
+            "name": "Gels",
+            "note": "≈18 g of carbohydrate",
+            "qty": "1",
+            "reason_constraint_key": "gut_carb_ceiling",
+            "reason_text": "51 g·h⁻¹ over 0.7 h, half carried from here."
+          }
+        ],
+        "key": "run_sn",
+        "name": "Run Special Needs",
+        "when_label": "Run leg midpoint"
+      }
+    ],
+    "binding_constraint_key": "bike_threshold_power",
+    "constraint_refs": [
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "swim_threshold_pace",
+        "name": "Swim Threshold Pace",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "/100m",
+        "value": "88"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "bike_threshold_power",
+        "name": "Bike Threshold Power",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "w",
+        "value": "285"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "run_threshold_pace",
+        "name": "Run Threshold Pace",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "/km",
+        "value": "240"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "weight",
+        "name": "Weight",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "kg",
+        "value": "68"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "sweat_rate",
+        "name": "Sweat Rate",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "L/hr",
+        "value": "1.4"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "sodium_loss",
+        "name": "Sodium Loss",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "mg/L",
+        "value": "1250"
+      },
+      {
+        "affects_text": "",
+        "binding": false,
+        "description": "",
+        "key": "gut_carb_ceiling",
+        "name": "Gut Carb Ceiling",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "g/hr",
+        "value": "95"
+      },
+      {
+        "affects_text": "",
+        "binding": true,
+        "description": "",
+        "key": "caffeine_tolerance",
+        "name": "Caffeine Tolerance",
+        "override_text": "",
+        "source_label": "measured",
+        "unit": "mg",
+        "value": "400"
+      }
+    ],
+    "feasibility": "CLEAR",
+    "fuelling": {
+      "binding_caffeine_key": "caffeine_tolerance",
+      "binding_carb_key": "model:carb_duration_target",
+      "binding_fluid_key": "model:gastric_emptying_cap",
+      "binding_sodium_key": "sodium_loss",
+      "caffeine_mg_total": 400,
+      "carb_g_per_hr": 51,
+      "fluid_ml_per_hr": 1000,
+      "overridden": false,
+      "requires_multiple_transportable": false,
+      "sodium_mg_per_hr": 1500,
+      "total_carb_g": 88
+    },
+    "gates": [
+      {
+        "eta_minutes": "22.0",
+        "leg": "SWIM",
+        "limit_minutes": "50.0",
+        "load_pct": "44.1",
+        "margin_minutes": "28.0",
+        "name": "swim_exit",
+        "state": "clear"
+      },
+      {
+        "eta_minutes": "86.0",
+        "leg": "BIKE",
+        "limit_minutes": "170.0",
+        "load_pct": "50.6",
+        "margin_minutes": "84.0",
+        "name": "bike_cutoff",
+        "state": "clear"
+      },
+      {
+        "eta_minutes": "129.6",
+        "leg": "RUN",
+        "limit_minutes": "240.0",
+        "load_pct": "54.0",
+        "margin_minutes": "110.4",
+        "name": "finish",
+        "state": "clear"
+      }
+    ],
+    "infeasibility": null,
+    "margin_state": "clear",
+    "projected_minutes": "129.6",
+    "segments": [
+      {
+        "from_km": "0.0",
+        "leg": "BIKE",
+        "name": "Olympic out",
+        "note": "",
+        "ordinal": 1,
+        "target_minutes": "31.1",
+        "target_pace_sec_per_km": null,
+        "target_watts": 243,
+        "terrain_desc": "Flat",
+        "to_km": "20.0"
+      },
+      {
+        "from_km": "20.0",
+        "leg": "BIKE",
+        "name": "Olympic back",
+        "note": "",
+        "ordinal": 2,
+        "target_minutes": "29.2",
+        "target_pace_sec_per_km": null,
+        "target_watts": 240,
+        "terrain_desc": "Flat",
+        "to_km": "40.0"
+      },
+      {
+        "from_km": "0.0",
+        "leg": "RUN",
+        "name": "Olympic run out",
+        "note": "",
+        "ordinal": 3,
+        "target_minutes": "21.2",
+        "target_pace_sec_per_km": 255,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "5.0"
+      },
+      {
+        "from_km": "5.0",
+        "leg": "RUN",
+        "name": "Olympic run back",
+        "note": "",
+        "ordinal": 4,
+        "target_minutes": "21.2",
+        "target_pace_sec_per_km": 255,
+        "target_watts": null,
+        "terrain_desc": "Flat",
+        "to_km": "10.0"
+      }
+    ],
+    "splits": [
+      {
+        "distance": "1.5",
+        "leg": "SWIM",
+        "note": "Wetsuit",
+        "split_minutes": "22.0",
+        "target_pace_or_power": "1:28",
+        "unit": "/100m"
+      },
+      {
+        "distance": "40.0",
+        "leg": "BIKE",
+        "note": "0.85 IF",
+        "split_minutes": "60.3",
+        "target_pace_or_power": "241",
+        "unit": "w"
+      },
+      {
+        "distance": "10.0",
+        "leg": "RUN",
+        "note": "Heat adjusted",
+        "split_minutes": "42.4",
+        "target_pace_or_power": "4:15",
+        "unit": "/km"
+      }
+    ],
+    "wetsuit_used": true,
+    "wetsuit_warning": false,
+    "worst_margin_minutes": "28.0"
+  },
+  "schema_version": 2,
+  "solve_input_hash": "0ba1363b97e937610dc7b783b3f0aeb2b654539392a4a81cb009a7410bdacbdf",
+  "verdict": "solved"
+}

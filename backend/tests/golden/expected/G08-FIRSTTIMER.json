@@ -1,0 +1,17 @@
+{
+  "case_id": "G08-FIRSTTIMER",
+  "course_id": "C-HALF",
+  "infeasibility": {
+    "barrier": "bike_cutoff",
+    "levers": [
+      "raise_ftp",
+      "reduce_weight"
+    ],
+    "miss_minutes": "12.2",
+    "tightest_barrier": "finish",
+    "tightest_miss_minutes": "17.3"
+  },
+  "schema_version": 2,
+  "solve_input_hash": "1fb527092e141dcba34294588ac230fc4189ddb66687226960931072bb6a1b88",
+  "verdict": "infeasible"
+}

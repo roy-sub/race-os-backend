@@ -1,0 +1,17 @@
+{
+  "case_id": "G14-EARLIESTMISS",
+  "course_id": "C-TRAM",
+  "infeasibility": {
+    "barrier": "bike_cutoff",
+    "levers": [
+      "raise_ftp",
+      "reduce_weight"
+    ],
+    "miss_minutes": "8.5",
+    "tightest_barrier": "finish",
+    "tightest_miss_minutes": "131.5"
+  },
+  "schema_version": 2,
+  "solve_input_hash": "59f3a8cea8bf21d263df3fe8c80ce6d114195c72e3442e3e585ebf8068fa5202",
+  "verdict": "infeasible"
+}

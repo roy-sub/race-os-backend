@@ -1,0 +1,11 @@
+# RaceOS backend — development and CI dependencies.
+# Installed on top of requirements.txt. Render never installs this file.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+mypy==1.14.1
+ruff==0.8.6
+schemathesis==3.39.5
+types-python-dateutil==2.9.0.20241206

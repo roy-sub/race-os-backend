@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raceos-backend"
+version = "1.0.0"
+description = "RaceOS backend: deterministic race-plan solver and API."
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["raceos*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error::DeprecationWarning:raceos.*"]
+markers = [
+  "integration: requires a live local PostgreSQL with PostGIS",
+  "golden: solver golden-file regression; a diff blocks deploy",
+  "perf: performance budgets measured against a real course bundle",
+]
+
+# --- mypy ------------------------------------------------------------------
+# Strict on solver/ and domain/ per the build rules. The rest of the codebase
+# is checked at default strictness; tightening it further is a later pass, not
+# a silent exemption.
+[tool.mypy]
+python_version = "3.11"
+packages = ["raceos"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = ["raceos.solver.*", "raceos.domain.*"]
+strict = true
+disallow_any_explicit = true
+
+# `adapters` is the solver's one JSON boundary: it parses a course file whose
+# shape the type system cannot know and returns a fully typed frozen snapshot.
+# Everything downstream of it is `Any`-free, which is where the guarantee
+# actually matters. Keeping `strict` on and lifting only the explicit-Any ban
+# is narrower than exempting the module.
+[[tool.mypy.overrides]]
+module = ["raceos.solver.adapters", "raceos.solver.serialisation"]
+strict = true
+disallow_any_explicit = false
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["geoalchemy2.*", "stripe.*", "garmin_fit_sdk.*", "gpxpy.*", "weasyprint.*", "pywebpush.*", "icalendar.*", "shapely.*"]
+ignore_missing_imports = true
+
+# --- ruff ------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PT", "SIM", "RUF"]
+ignore = [
+  "E501",    # line length is formatter-enforced, not lint-enforced
+  "B008",    # FastAPI Depends() in defaults is the framework idiom
+  # This codebase quotes SOLVER_MODEL.md extensively, and that document uses
+  # correct typography throughout: en dashes in ranges ("0.65-0.78" is written
+  # 0.65–0.78), minus signs, and the multiplication sign in units. Rewriting
+  # them to ASCII would make the quotations differ from the source they cite,
+  # which is worse than the ambiguity these rules guard against.
+  "RUF002",  # ambiguous unicode in a docstring
+  "RUF003",  # ambiguous unicode in a comment
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+# The exception class names deliberately mirror the wire codes in ErrorCode
+# (INVALID_INPUT -> InvalidInput, INFEASIBLE -> Infeasible), so that a reader
+# can map a response body to the class that produced it without a lookup
+# table. An `Error` suffix on each would break that correspondence, and
+# `InfeasibleError` misdescribes what INFEASIBLE is: a successful solve with
+# an infeasible verdict, not a fault. The base class is `RaceOSError`.
+"raceos/api/errors.py" = ["N818"]
+# `BundleIncomplete` and `MissingConstraint` are the names SOLVER_MODEL.md
+# §1.2 and §2.2 use for these conditions. Renaming them would break the
+# correspondence between an error and the section that specifies it, which is
+# the main way a reader navigates between the two.
+"raceos/solver/errors.py" = ["N818"]
+"raceos/solver/pipeline.py" = ["N818"]
+
+[tool.coverage.run]
+source = ["raceos"]
+omit = ["raceos/db/migrations/*"]

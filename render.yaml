@@ -1,0 +1,125 @@
+# Render deployment.
+#
+# One web service, Render's native Python runtime. No Docker: no Dockerfile,
+# no compose file, no container tooling anywhere in this repository.
+#
+# Secrets are NOT in this file. Every variable marked `sync: false` must be set
+# in Render's dashboard (Environment -> Environment Variables). `.env.example`
+# documents the shape and purpose of each one; docs/CONFIGURATION.md says where
+# to obtain it.
+#
+# Before the first deploy:
+#   1. Run `python scripts/check_supabase.py` locally against the real
+#      DATABASE_URL. It reports which connection form works and whether PostGIS
+#      is enabled. If the direct host is IPv6-only and Render cannot reach it,
+#      use the pooler URL — that is a DATABASE_URL change, not a code change.
+#   2. Set every `sync: false` variable below.
+#   3. Deploy. Migrations run as the preDeploy step.
+#   4. Register the Stripe webhook against
+#      https://<service>.onrender.com/webhooks/payments and set
+#      STRIPE_WEBHOOK_SECRET from the value Stripe then shows you.
+#   5. Point an external cron at /internal/jobs/{name}; the README's schedule
+#      table lists each job and its intended cadence.
+
+services:
+  - type: web
+    name: raceos-api
+    runtime: python
+    plan: starter
+    region: frankfurt
+    rootDir: backend
+
+    buildCommand: pip install -r requirements.txt
+
+    # Migrations run before the new instance takes traffic. Forward-only in
+    # production; every migration is reversible in review and follows
+    # expand-contract, so the previous image always runs against the new schema.
+    preDeployCommand: alembic upgrade head
+
+    startCommand: >-
+      gunicorn raceos.api.main:app
+      --worker-class uvicorn.workers.UvicornWorker
+      --workers ${WEB_CONCURRENCY}
+      --bind 0.0.0.0:${PORT}
+      --timeout 120
+      --graceful-timeout 30
+      --access-logfile -
+
+    # Liveness only. It checks nothing external on purpose: if it verified the
+    # database, a brief database blip would make Render restart healthy
+    # instances. Dependency checks live at /readyz.
+    healthCheckPath: /healthz
+
+    autoDeployTrigger: off
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.15"
+
+      # Two workers on the starter plan. The solver is CPU-bound and runs
+      # synchronously in the request, so workers are what give concurrency.
+      - key: WEB_CONCURRENCY
+        value: "2"
+
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+
+      # --- set these in the dashboard ---------------------------------
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: SESSION_COOKIE_SECRET
+        sync: false
+      - key: INTERNAL_JOB_SECRET
+        sync: false
+
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID_RACE_PLAN
+        sync: false
+      - key: STRIPE_PRICE_ID_SEASON_PASS
+        sync: false
+      - key: STRIPE_PRICE_ID_COACH
+        sync: false
+
+      - key: TERRAIN_PMTILES_BASE_URL
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+
+      # --- V1 feature flags -------------------------------------------
+      # Email transport is a no-op, push is off, phrasing uses deterministic
+      # templates, and accounts are created already verified because there is
+      # no way to deliver a verification message. Flipping any of these needs
+      # no code change.
+      - key: EMAIL_ENABLED
+        value: "false"
+      - key: PUSH_ENABLED
+        value: "false"
+      - key: PHRASING_ENABLED
+        value: "false"
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "false"
