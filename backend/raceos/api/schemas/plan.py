@@ -7,7 +7,7 @@ one implementation rather than two that drift.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -188,6 +188,20 @@ class PlanSummary(BaseModel):
 
 
 class PlanDetail(PlanSummary):
+    #: Race identity, denormalised onto the plan.
+    #:
+    #: Every wall-clock time on the race card ("09:22 at km 34") is measured
+    #: from the start, so a plan that does not carry its own date and start
+    #: time forces the client into a second call just to render a heading.
+    event_date: date | None = None
+    start_time_local: str | None = None
+    course_name: str | None = None
+    course_place: str | None = None
+    course_slug: str | None = None
+    timezone: str | None = None
+    bundle_version: str | None = None
+    #: ODbL obliges attribution wherever derived geometry is displayed.
+    attribution: str | None = None
     segments: list[SegmentOut] = Field(default_factory=list)
     splits: list[SplitOut] = Field(default_factory=list)
     gates: list[GateOut] = Field(default_factory=list)

@@ -25,6 +25,8 @@ from raceos.api.schemas.plan import (
     format_hm,
 )
 from raceos.db.models import (
+    Course,
+    CourseBundle,
     Plan,
     PlanAidAction,
     PlanBag,
@@ -34,6 +36,7 @@ from raceos.db.models import (
     PlanGate,
     PlanSegment,
     PlanSplit,
+    Race,
 )
 
 
@@ -112,4 +115,21 @@ def plan_detail(session: Session, plan: Plan) -> PlanDetail:
             select(PlanConstraintRef).where(PlanConstraintRef.plan_id == plan.id)
         )
     ]
+
+    # Race identity, so a caller rendering the race card does not need a
+    # second request just to print the date at the top of it.
+    race = session.get(Race, plan.race_id)
+    if race is not None:
+        detail.event_date = race.event_date
+        detail.start_time_local = race.start_time_local.strftime("%H:%M")
+        course = session.get(Course, race.course_id)
+        if course is not None:
+            detail.course_name = course.name
+            detail.course_place = course.place
+            detail.course_slug = course.slug
+            detail.timezone = course.timezone
+        bundle = session.get(CourseBundle, race.course_bundle_id)
+        if bundle is not None:
+            detail.bundle_version = bundle.version
+            detail.attribution = bundle.attribution
     return detail

@@ -42,6 +42,7 @@ from raceos.api.routers import (
     plans,
     postrace,
     racemode,
+    races,
     share,
 )
 from raceos.config import Settings, get_settings
@@ -116,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(constraints.router)
     app.include_router(plans.router)
     app.include_router(plans.jobs_router)
+    app.include_router(races.router)
     app.include_router(exports.router)
     app.include_router(billing.router)
     app.include_router(billing.webhook_router)

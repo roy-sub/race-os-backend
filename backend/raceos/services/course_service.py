@@ -195,6 +195,41 @@ def get_bundle_history(session: Session, course_ref: str) -> list[BundleHistoryE
     return entries
 
 
+#: Points per leg handed to a map. Enough that a hairpin still reads as a
+#: hairpin at full zoom, few enough that the payload stays small.
+MAP_MAX_POINTS = 600
+
+
+def _leg_coordinates(leg: Any) -> list[list[float]]:
+    """``[[lng, lat, elevation], ...]`` from the stored PostGIS geometry.
+
+    GeoJSON order — longitude first. Getting this backwards puts Mallorca in
+    Somalia, and it is the single most common mistake with coordinate pairs.
+    """
+    from geoalchemy2.shape import to_shape
+
+    shape = to_shape(leg.geometry)
+    return [
+        [round(float(c[0]), 6), round(float(c[1]), 6), round(float(c[2]), 1) if len(c) > 2 else 0.0]
+        for c in shape.coords
+    ]
+
+
+def _downsample(points: list[list[float]], limit: int) -> list[list[float]]:
+    """Keep every nth point, always keeping the first and last.
+
+    Dropping the last point would leave a route that stops short of the
+    finish, which looks like a data error rather than a rendering choice.
+    """
+    if len(points) <= limit:
+        return points
+    step = len(points) / limit
+    kept = [points[int(i * step)] for i in range(limit)]
+    if kept[-1] != points[-1]:
+        kept.append(points[-1])
+    return kept
+
+
 def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[str, Any]:
     """Everything the free recon page shows for one course.
 
@@ -245,6 +280,11 @@ def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[
                 "elevation_gain_m": float(leg.elevation_gain_m),
                 "node_count": leg.node_count,
                 "surface_quality": leg.surface_quality.value,
+                # The actual route, so a public map can draw the real course
+                # rather than a placeholder. Downsampled: a browser drawing a
+                # polyline gains nothing from 10 m spacing, and the full
+                # series is a megabyte per leg.
+                "coordinates": _downsample(_leg_coordinates(leg), MAP_MAX_POINTS),
             }
             for leg in legs
         ],

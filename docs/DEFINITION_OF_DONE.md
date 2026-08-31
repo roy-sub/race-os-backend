@@ -74,7 +74,7 @@ block. Recorded as D-084.
 
 | Item | Evidence |
 |---|---|
-| 111 API routes | `GET /api/v1/docs`; the README's table |
+| 116 API routes | `GET /api/v1/docs`; the README's table |
 | 13 scheduled jobs behind one secret | `GET /internal/jobs`; `test_admin.py::test_thirteen_jobs_are_registered` |
 | Deterministic solver, six stages | `tests/golden/` — 15 frozen expectations |
 | Seed data, idempotent | `make seed`; `test_seed.py::test_running_the_seed_twice_changes_nothing` |
