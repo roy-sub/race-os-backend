@@ -12,12 +12,14 @@ must not be readable by anyone holding a plan id.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
 from raceos.api.deps import CurrentUser, DbSession
+from raceos.api.errors import ServiceUnavailable
 from raceos.api.serialise import plan_detail
 from raceos.domain.entitlements import EntitlementAction
 from raceos.domain.enums import Leg
@@ -82,6 +84,18 @@ def list_exports(plan_id: UUID, session: DbSession, user: CurrentUser) -> dict[s
     }
 
 
+def _render_pdf(render: Callable[[pdf.PlanRenderData], bytes], data: pdf.PlanRenderData) -> bytes:
+    """Turn a missing font library into a 503 for this endpoint alone.
+
+    Without this the failure is an unhandled 500 with no explanation, and the
+    operator has to read a traceback to learn that the host is missing pango.
+    """
+    try:
+        return render(data)
+    except pdf.PdfUnavailableError as error:
+        raise ServiceUnavailable(str(error)) from error
+
+
 @router.get(
     "/{plan_id}/export/race-card.pdf",
     response_class=Response,
@@ -90,7 +104,7 @@ def list_exports(plan_id: UUID, session: DbSession, user: CurrentUser) -> dict[s
 def export_race_card(plan_id: UUID, session: DbSession, user: CurrentUser) -> Response:
     context = _context(session, plan_id, user)
     detail = plan_detail(session, context.plan)
-    document = pdf.render_race_card(export_service.build_render_data(context, detail))
+    document = _render_pdf(pdf.render_race_card, export_service.build_render_data(context, detail))
     return _download(
         document,
         media_type="application/pdf",
@@ -110,7 +124,9 @@ def export_race_card(plan_id: UUID, session: DbSession, user: CurrentUser) -> Re
 def export_bag_manifests(plan_id: UUID, session: DbSession, user: CurrentUser) -> Response:
     context = _context(session, plan_id, user)
     detail = plan_detail(session, context.plan)
-    document = pdf.render_bag_manifests(export_service.build_render_data(context, detail))
+    document = _render_pdf(
+        pdf.render_bag_manifests, export_service.build_render_data(context, detail)
+    )
     return _download(
         document,
         media_type="application/pdf",

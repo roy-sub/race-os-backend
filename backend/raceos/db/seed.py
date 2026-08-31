@@ -21,6 +21,7 @@ the directory shows three until those are generated.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Any
@@ -74,8 +75,27 @@ def seed_all() -> dict[str, Any]:
 
 
 def main() -> int:
+    """``--courses-only`` seeds the course library and nothing else.
+
+    That is the production mode. The full seed also creates thirteen example
+    athletes with solved plans, which is exactly right for a laptop and
+    exactly wrong for a live database — real users would be sharing a course
+    directory with Elena Marsh.
+    """
+    parser = argparse.ArgumentParser(description="Seed the RaceOS database.")
+    parser.add_argument(
+        "--courses-only",
+        action="store_true",
+        help="Load course bundles only. Use this on a live deployment.",
+    )
+    args = parser.parse_args()
+
     configure_logging(service="raceos-seed")
     try:
+        if args.courses_only:
+            count = seed_courses()
+            logger.info("seed complete", extra={"courses_loaded": count})
+            return 0
         summary = seed_all()
     except BundleValidationError as exc:
         # A bundle that fails validation is a stop, not a warning: seeding a

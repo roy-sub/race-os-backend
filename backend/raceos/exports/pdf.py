@@ -13,12 +13,11 @@ asserts it exists, because its absence was a real past incident (Part 6.2).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
 from typing import Any
-
-from weasyprint import HTML
 
 from raceos.exports import tokens
 
@@ -258,8 +257,39 @@ def render_bag_manifests(data: PlanRenderData) -> bytes:
     return _to_pdf(bag_manifest_html(data))
 
 
+class PdfUnavailableError(RuntimeError):
+    """WeasyPrint could not be loaded, so PDFs cannot be rendered here.
+
+    Raised instead of failing at import time. WeasyPrint binds native
+    libraries (pango, cairo, fontconfig) when it is imported, and on a host
+    that lacks them the import raises `OSError` — which, from a module the
+    router imports at start-up, would take down **the entire API** rather
+    than one feature. A hosting image missing a font library must cost the
+    two PDF endpoints, not the other 109.
+    """
+
+
+def _load_weasyprint() -> Callable[..., Any]:
+    """Import WeasyPrint on first use, not at module import.
+
+    Cached by ``sys.modules`` after the first successful call, so the cost is
+    paid once and only by a request that actually renders a PDF.
+    """
+    try:
+        from weasyprint import HTML
+    except (ImportError, OSError) as error:
+        raise PdfUnavailableError(
+            f"PDF rendering is unavailable on this host: {error}. WeasyPrint "
+            f"needs the pango, cairo and fontconfig system libraries. Every "
+            f"other export (FIT, GPX, ICS) is unaffected."
+        ) from error
+    renderer: Callable[..., Any] = HTML
+    return renderer
+
+
 def _to_pdf(html: str) -> bytes:
-    rendered = HTML(string=html).write_pdf()
+    render = _load_weasyprint()
+    rendered = render(string=html).write_pdf()
     if rendered is None:  # pragma: no cover - WeasyPrint returns bytes here
         raise RuntimeError("PDF rendering produced no output")
     return bytes(rendered)
