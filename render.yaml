@@ -14,7 +14,10 @@
 #      is enabled. If the direct host is IPv6-only and Render cannot reach it,
 #      use the pooler URL — that is a DATABASE_URL change, not a code change.
 #   2. Set every `sync: false` variable below.
-#   3. Deploy. Migrations run as the preDeploy step.
+#   3. Deploy. Migrations and the course seed run as the preDeploy step.
+#      NOTE: preDeployCommand requires a paid instance type. On the free
+#      tier it is silently skipped and you must run both by hand in the
+#      Render Shell.
 #   4. Register the Stripe webhook against
 #      https://<service>.onrender.com/webhooks/payments and set
 #      STRIPE_WEBHOOK_SECRET from the value Stripe then shows you.
@@ -34,7 +37,11 @@ services:
     # Migrations run before the new instance takes traffic. Forward-only in
     # production; every migration is reversible in review and follows
     # expand-contract, so the previous image always runs against the new schema.
-    preDeployCommand: alembic upgrade head
+    # Migrations, then the course library. `--courses-only` deliberately
+    # excludes the example athletes: real users must not share a course
+    # directory with Elena Marsh. Both halves are idempotent, so this is
+    # safe to run on every deploy.
+    preDeployCommand: alembic upgrade head && python -m raceos.db.seed --courses-only
 
     startCommand: >-
       gunicorn raceos.api.main:app
