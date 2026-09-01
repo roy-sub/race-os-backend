@@ -29,6 +29,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -105,6 +106,20 @@ def _normalise_pem(value: str) -> str:
     if not text.endswith("\n"):
         text += "\n"
     return text
+
+
+def _origin_of(url: str) -> str:
+    """``https://app.example/anything`` -> ``https://app.example``.
+
+    An ``Origin`` header is scheme, host and port and nothing else, so a value
+    carrying a path or a trailing slash has to be reduced before it can be
+    compared against one. Anything unparseable returns "" and is dropped by the
+    caller rather than being sent to the browser as a broken origin.
+    """
+    parsed = urlparse(url.strip())
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 class Settings(BaseSettings):
@@ -414,7 +429,30 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> tuple[str, ...]:
-        return tuple(o.strip() for o in self.cors_allowed_origins.split(",") if o.strip())
+        """Origins the browser may call this API from.
+
+        ``CORS_ALLOWED_ORIGINS`` is the explicit list, and the origin of
+        ``APP_BASE_URL`` is folded in on top of it.
+
+        That second half is not a convenience. ``APP_BASE_URL`` is already the
+        declared public origin of the frontend — it is what every link this
+        service builds is rooted at — so a deployment where the frontend can
+        receive our emails but not call our API is incoherent. Deriving it here
+        means the one origin that must work cannot be left out of a second
+        variable by accident, and an operator adding a preview or a custom
+        domain still lists those in ``CORS_ALLOWED_ORIGINS`` as before.
+
+        A wildcard is still rejected outside development by ``_validate``,
+        which reads the raw setting, so nothing here can widen that.
+        """
+        origins: list[str] = []
+        for candidate in (
+            *(o.strip() for o in self.cors_allowed_origins.split(",")),
+            _origin_of(self.app_base_url),
+        ):
+            if candidate and candidate not in origins:
+                origins.append(candidate)
+        return tuple(origins)
 
     @property
     def freeze_day_set(self) -> frozenset[str]:

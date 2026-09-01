@@ -11,6 +11,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from raceos.api.constraint_copy import CONSTRAINT_COPY
 from raceos.api.schemas.plan import (
     AidActionOut,
     BagItemOut,
@@ -38,6 +39,31 @@ from raceos.db.models import (
     PlanSplit,
     Race,
 )
+
+
+def _with_drawer_copy(ref: ConstraintRefOut) -> ConstraintRefOut:
+    """Fill the "Why this?" drawer's prose where the stored row has none.
+
+    The solver writes ``description``, ``affects_text`` and ``override_text`` as
+    empty strings and ``plan_service`` stores those as NULL, so without this the
+    drawer renders a heading with nothing under it. The sentences live in
+    ``constraint_copy`` and carry no numbers — the value, unit and source beside
+    them in the drawer are the athlete's own, straight from the solve.
+
+    Filling in only where a field is empty means anything the solver does emit
+    takes precedence, and that plans solved before this existed gain the copy
+    too rather than only new ones.
+    """
+    copy = CONSTRAINT_COPY.get(ref.key)
+    if copy is None:
+        return ref
+    return ref.model_copy(
+        update={
+            "description": ref.description or copy.description,
+            "affects_text": ref.affects_text or copy.affects_text,
+            "override_text": ref.override_text or copy.override_text,
+        }
+    )
 
 
 def plan_summary(plan: Plan) -> PlanSummary:
@@ -110,7 +136,7 @@ def plan_detail(session: Session, plan: Plan) -> PlanDetail:
     detail.bags.sort(key=lambda b: position[b.key])
 
     detail.constraint_refs = [
-        ConstraintRefOut.model_validate(row)
+        _with_drawer_copy(ConstraintRefOut.model_validate(row))
         for row in session.scalars(
             select(PlanConstraintRef).where(PlanConstraintRef.plan_id == plan.id)
         )

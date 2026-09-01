@@ -11,7 +11,7 @@ on the page, which defeats the point of rotating it.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Cookie, Header, Request, Response, status
 
@@ -36,14 +36,35 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _cookie_policy(settings: Settings) -> tuple[bool, Literal["lax", "none"]]:
+    """``(secure, samesite)`` for the refresh cookie, per environment.
+
+    Outside development the frontend and this API are served from different
+    registrable domains — a static site on one host, this service on another —
+    so **every** call the browser makes to us is cross-site. A ``SameSite=Lax``
+    cookie is not sent on a cross-site request, which means ``POST
+    /auth/refresh`` would never see one: sessions would die at the end of the
+    access token's TTL and would not survive a page reload.
+
+    ``SameSite=None`` is therefore correct in staging and production, and it
+    requires ``Secure``, which is already set there. Development keeps ``Lax``:
+    ``localhost:3000`` and ``localhost:8000`` are same-site, so ``Lax`` works,
+    and it avoids requiring ``Secure`` over plain http.
+    """
+    if settings.app_env is AppEnv.DEVELOPMENT:
+        return False, "lax"
+    return True, "none"
+
+
 def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> None:
+    secure, samesite = _cookie_policy(settings)
     response.set_cookie(
         key=settings.session_cookie_name,
         value=token,
         max_age=settings.jwt_refresh_ttl_seconds,
         httponly=True,
-        secure=settings.app_env is not AppEnv.DEVELOPMENT,
-        samesite="lax",
+        secure=secure,
+        samesite=samesite,
         path="/api/v1/auth",
         domain=settings.session_cookie_domain or None,
     )
@@ -180,7 +201,18 @@ def logout(
 ) -> None:
     auth_service.logout(session, refresh_token=raceos_refresh, user_id=user.id)
     session.commit()
-    response.delete_cookie(settings.session_cookie_name, path="/api/v1/auth")
+    # Same attributes as `_set_refresh_cookie`: a deletion whose `secure`,
+    # `samesite` or `domain` differ addresses a different cookie, and the real
+    # one would survive the logout.
+    secure, samesite = _cookie_policy(settings)
+    response.delete_cookie(
+        settings.session_cookie_name,
+        path="/api/v1/auth",
+        domain=settings.session_cookie_domain or None,
+        secure=secure,
+        httponly=True,
+        samesite=samesite,
+    )
 
 
 @router.post(
