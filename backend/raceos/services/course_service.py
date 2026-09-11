@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session, selectinload
 
 from raceos.api.errors import InvalidInput, NotFound
@@ -30,7 +30,12 @@ from raceos.api.schemas.course import (
 )
 from raceos.config import Settings
 from raceos.db.models import Course, CourseBundle, User
-from raceos.domain.enums import BundleStatus, CourseVisibility, DistanceType
+from raceos.domain.enums import (
+    BundleStatus,
+    CourseAvailability,
+    CourseVisibility,
+    DistanceType,
+)
 
 #: Barrier names that represent the headline cut-off, most significant first.
 #: A course without a bike cut-off (Olympic, Sprint) falls through to the
@@ -180,6 +185,13 @@ def _summarise(
         minutes, name = cutoff_summary(bundle.barriers)
         summary.cutoff_minutes = minutes
         summary.cutoff_barrier_name = name
+    else:
+        # An announced course has no surveyed climb, and the column's zero is
+        # the absence of a measurement rather than a flat course. Sending it as
+        # a number made the directory print "0 m" against fourteen races whose
+        # maps have not been built — a measurement we have never taken, stated
+        # as fact. `None` is what we actually know.
+        summary.elevation_gain_m = None
     return summary
 
 
@@ -201,6 +213,20 @@ def _visible_filter(viewer: User | None) -> Any:
     return and_(*clauses)
 
 
+#: Orders the directory by what a visitor can do with a row, before date.
+#:
+#: The showcase leads because it is the only map a signed-out visitor may open,
+#: and it is absent entirely once they sign in — so for an athlete the list
+#: opens on the races they can actually enter. Announced-but-unbuilt rows come
+#: last: they belong in the directory (hiding fourteen fifteenths of a season
+#: misrepresents the season) but not above the rows that work.
+_DIRECTORY_BAND = case(
+    (Course.visibility == CourseVisibility.SHOWCASE, 0),
+    (Course.availability == CourseAvailability.AVAILABLE, 1),
+    else_=2,
+)
+
+
 def list_courses(
     session: Session,
     *,
@@ -214,9 +240,19 @@ def list_courses(
     """The race directory.
 
     Public, and richer when signed in — but *narrower*, not wider: a signed-in
-    athlete sees the real season and not the marketing showcase. Ordering is by
-    the announced date, because a directory of dated events is being read to
-    answer "which race next?" and alphabetical order answers nothing.
+    athlete sees the real season and not the marketing showcase.
+
+    Ordered by **what a visitor can act on**, then by date:
+
+    1. the showcase, which is the one map a signed-out visitor may open and so
+       is the page's own best argument for itself;
+    2. everything raceable today, because a directory whose first rows cannot
+       be entered reads as a directory of dead ends;
+    3. the announced season, by date — the rows that answer "which race next?"
+
+    Within each band the announced date orders the rows, because a directory of
+    dated events is read to answer "which race next?" and alphabetical order
+    answers nothing.
     """
     visible = _visible_filter(viewer)
     statement = select(Course).where(visible)
@@ -234,7 +270,11 @@ def list_courses(
 
     total = len(session.scalars(count_statement).all())
     courses = session.scalars(
-        statement.order_by(Course.next_edition_date.asc().nullslast(), Course.name)
+        statement.order_by(
+            _DIRECTORY_BAND,
+            Course.next_edition_date.asc().nullslast(),
+            Course.name,
+        )
         .limit(limit)
         .offset(offset)
     ).all()
@@ -434,9 +474,13 @@ def course_recon(
             # scale by 14.5x. Saying so next to it is the difference between a
             # stylisation and a false claim.
             "illustrative_map": is_showcase(course),
+            # Honest and appealing at once: it has to say "this one is a
+            # drawing" without reading as an apology for the page it sits on.
+            # The two facts are the same as before, reordered so the surveyed
+            # maps are the point rather than the caveat.
             "illustrative_note": (
-                "Illustrative map, not to scale. Surveyed, true-scale maps "
-                "built from real course and terrain data open with a race plan."
+                "A taste of it — hand-drawn, and not to scale. Your race gets "
+                "the real thing: every metre surveyed from the course itself."
                 if is_showcase(course)
                 else None
             ),

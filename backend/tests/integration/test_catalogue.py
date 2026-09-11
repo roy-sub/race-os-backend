@@ -108,20 +108,50 @@ def test_a_coming_soon_race_carries_its_date_and_says_it_is_not_ready(
     coming = rows[catalogue["coming"]]
     assert coming["availability"] == "coming_soon"
     assert coming["next_edition_date"] == "2026-10-04"
-    # No bundle, so nothing pretends there is one.
+    # No bundle, so nothing pretends there is one. `elevation_gain_m` in
+    # particular: the column's zero is an unmeasured course, not a flat one,
+    # and the directory printed "0 m" against every announced race until it
+    # came back as null.
     assert coming["provenance"] is None
     assert coming["cutoff_minutes"] is None
+    assert coming["elevation_gain_m"] is None
 
 
 @needs_bundle
-def test_the_directory_is_ordered_by_date(api: TestClient, catalogue: dict) -> None:
+def test_the_directory_leads_with_what_a_visitor_can_open(api: TestClient, catalogue: dict) -> None:
+    """Showcase, then raceable, then announced — and by date inside each band.
+
+    A directory whose first rows cannot be entered reads as a directory of dead
+    ends, however correct its date order is.
+    """
+    rows = api.get("/api/v1/courses").json()["data"]
+    slugs = [row["slug"] for row in rows]
+    assert slugs[0] == catalogue["showcase"], "the one map a visitor may open leads"
+    assert slugs[1] == catalogue["bundled"], "then the races that can be entered"
+    assert slugs[2] == catalogue["coming"], "announced-but-unbuilt rows come last"
+
+
+@needs_bundle
+def test_a_signed_in_athlete_opens_on_a_race_they_can_enter(
+    api: TestClient, catalogue: dict, signed_up: dict
+) -> None:
+    """No showcase once signed in, so the list opens on a raceable row."""
+    rows = api.get("/api/v1/courses", headers=signed_up["headers"]).json()["data"]
+    assert rows[0]["slug"] == catalogue["bundled"]
+
+
+@needs_bundle
+def test_the_directory_is_ordered_by_date_inside_each_band(
+    api: TestClient, catalogue: dict
+) -> None:
     """A directory read to answer "which race next?" cannot be alphabetical."""
-    dated = [
+    rows = api.get("/api/v1/courses").json()["data"]
+    coming = [
         row["next_edition_date"]
-        for row in api.get("/api/v1/courses").json()["data"]
-        if row["next_edition_date"]
+        for row in rows
+        if row["availability"] == "coming_soon" and row["next_edition_date"]
     ]
-    assert dated == sorted(dated)
+    assert coming == sorted(coming)
 
 
 @needs_bundle
