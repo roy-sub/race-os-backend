@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from raceos.db.models import Course, CourseSubmission
+from raceos.db.models import Course, CourseSubmission, User
 from raceos.domain.enums import DistanceType, Leg, SubmissionStatus
 from raceos.ingest.elevation import ConstantElevation
 from raceos.services import submission_service
@@ -84,10 +84,10 @@ def upload(api: TestClient, headers: dict, submission_id: str, leg: str) -> dict
     return response.json()
 
 
-def build(api_db, headers_user_id, submission_id, settings) -> CourseSubmission:
+def build(api_db, user_id, submission_id, settings) -> CourseSubmission:
     """Run the build with an offline elevation source."""
     submission = api_db.get(CourseSubmission, submission_id)
-    user = submission.user
+    user = api_db.get(User, submission.user_id)
     return submission_service.process(
         api_db,
         user=user,
@@ -119,7 +119,10 @@ def test_a_file_that_is_not_gpx_is_refused_before_it_is_stored(
         headers=signed_up["headers"],
         files={"file": ("bike.gpx", b"this is a .fit file, renamed", "application/gpx+xml")},
     )
-    assert response.status_code == 400
+    # 422 rather than 400: INVALID_INPUT is 422 everywhere in this API, and a
+    # file the parser rejects is invalid input like any other.
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_INPUT"
     assert "bike.gpx" in response.json()["error"]["message"]
 
     still_empty = api.get(

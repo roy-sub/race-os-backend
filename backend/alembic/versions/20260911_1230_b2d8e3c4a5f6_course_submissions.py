@@ -24,14 +24,23 @@ down_revision: str | None = "a1c7f2b9d3e4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+# Created as a side effect of the column that uses it, which is how every
+# other enum in this schema is made — see the initial migration. Pre-creating
+# it *and* declaring it on the column emits CREATE TYPE twice, and the second
+# one fails.
 SUBMISSION_STATUS = sa.Enum(
     "draft", "queued", "processing", "ready", "failed", name="submission_status"
 )
 
+# `distance_type` is not ours: the initial migration made it. Referencing it
+# with `create_type=False` uses the existing type instead of trying to declare
+# a second one with the same name.
+DISTANCE_TYPE = postgresql.ENUM(
+    "Sprint", "Olympic", "70.3", "Full", name="distance_type", create_type=False
+)
+
 
 def upgrade() -> None:
-    SUBMISSION_STATUS.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         "course_submissions",
         sa.Column(
@@ -60,11 +69,7 @@ def upgrade() -> None:
         sa.Column("place", sa.Text(), nullable=False),
         sa.Column("country", sa.String(length=2), nullable=True),
         sa.Column("timezone", sa.Text(), nullable=False),
-        sa.Column(
-            "distance_type",
-            sa.Enum("Sprint", "Olympic", "70.3", "Full", name="distance_type"),
-            nullable=False,
-        ),
+        sa.Column("distance_type", DISTANCE_TYPE, nullable=False),
         sa.Column("lat", sa.Numeric(), nullable=False),
         sa.Column("lng", sa.Numeric(), nullable=False),
         sa.Column("event_date", sa.Date(), nullable=True),
@@ -101,4 +106,6 @@ def downgrade() -> None:
     op.drop_index("ix_course_submissions_status", table_name="course_submissions")
     op.drop_index("ix_course_submissions_user_id", table_name="course_submissions")
     op.drop_table("course_submissions")
+    # Explicit, because dropping the table does not drop the type it used and
+    # an orphaned type makes the next upgrade fail.
     SUBMISSION_STATUS.drop(op.get_bind(), checkfirst=True)

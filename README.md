@@ -78,6 +78,53 @@ machine, forever.
 
 ---
 
+## The catalogue, and who sees what in it
+
+`db/catalogue.py` is a **declared manifest**, not a reflection of whatever
+bundles happen to be in the build directory. `make seed` loads the bundles the
+manifest names, writes the manifest's own columns over them, and retires every
+uncatalogued course it finds. Three consequences are deliberate:
+
+- **An announced event with no course data is listed and not enterable.**
+  `availability` is a stored column, not `has a bundle`, so an event can be
+  listed while its bundle is under review and a bundle that fails review
+  cannot promote its own row. Entering one is refused with the announced
+  date, so the answer reads as "not yet" rather than "no".
+- **The showcase course is listed to signed-out visitors only**
+  (`CourseVisibility.SHOWCASE`). It is a tuned graphic, and shown beside
+  surveyed courses it would invite the two to be read as the same kind of
+  thing.
+- **A course the manifest stops naming is retired, never deleted**, because
+  deleting one would orphan every plan already solved against it.
+
+Athlete-submitted courses sit outside all of this: they are visible to their
+submitter alone and the seed leaves them untouched.
+
+### Map access
+
+`services/course_service.map_access` is the single decision, and every caller
+reads its answer rather than composing one:
+
+| Course | Signed-out | Signed in |
+|---|---|---|
+| Showcase | open | not listed |
+| Catalogue | withheld, with a reason | the entitlement table decides |
+| Own submission | not listed | open |
+
+`GET /courses/{ref}/terrain` serves the baked terrain field the 3D map renders
+from. It is behind the same decision, so a locked map cannot be read around by
+asking for its terrain directly.
+
+### Full-access accounts
+
+`FULL_ACCESS_EMAILS` grants one address every entitlement without a payment —
+the developer and demo path. It is **configuration**, not a column and not a
+hardcoded address, so it is withdrawable in one deploy, and it creates no
+purchase and no invoice: a grant is not a sale, and a granted account that
+reached revenue would make every figure on the Ops page wrong.
+
+---
+
 ## Testing
 
 ```bash

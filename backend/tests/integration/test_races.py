@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from raceos.db.models import Course, CourseBundle, Race
+from raceos.domain.enums import CourseAvailability
 from raceos.ingest.bundle_loader import load_bundle_file
 from tests.integration.conftest import buy_plan
 
@@ -47,6 +48,14 @@ def seeded(api: TestClient, signed_up, migrated_engine, paywall):
         pytest.skip("generated bundles are git-ignored build artefacts")
     with sessionmaker(bind=migrated_engine)() as session:
         load_bundle_file(session, TRAMUNTANA)
+        # The loader installs course data; it does not decide whether the row
+        # is bookable — `availability` is stored, not inferred from "has a
+        # bundle", so that a bundle under review cannot promote itself. The
+        # real seed applies that from the catalogue manifest; here we do the
+        # one line of it these tests depend on.
+        session.scalar(
+            select(Course).where(Course.slug == "tramuntana-full")
+        ).availability = CourseAvailability.AVAILABLE
         session.commit()
     return signed_up["headers"]
 

@@ -37,10 +37,21 @@ pytestmark = pytest.mark.integration
 
 BUNDLE_DIR = Path(__file__).resolve().parents[3] / "pipelines" / "course-ingest" / "out" / "bundles"
 
-#: The three courses the pipeline generates. Six more specs are marked
+#: Every course the pipeline has built. The remaining specs are marked
 #: `status: pending` and are deliberately not built, so the directory shows
-#: three — that is expected, not a gap in this test.
-EXPECTED_SLUGS = {"tramuntana-full", "kalmar-703", "skagen-703"}
+#: these four — that is expected, not a gap in this test.
+#:
+#: Note that this is the *loader's* view, not the catalogue's: `tramuntana-full`
+#: and `skagen-703` are fictional demo courses that the real seed retires,
+#: because `raceos.db.catalogue` does not name them. These tests load bundles
+#: directly on purpose, to hold the loader to the bundles on disk rather than
+#: to the manifest.
+EXPECTED_SLUGS = {
+    "tramuntana-full",
+    "kalmar-703",
+    "skagen-703",
+    "italy-emilia-romagna-703",
+}
 
 needs_bundles = pytest.mark.skipif(
     not BUNDLE_DIR.is_dir() or not list(BUNDLE_DIR.glob("*.bundle.json")),
@@ -69,7 +80,7 @@ def test_every_generated_bundle_validates() -> None:
 
 
 @needs_bundles
-def test_all_three_bundles_load(db: Session) -> None:
+def test_every_generated_bundle_loads(db: Session) -> None:
     results = load_bundle_directory(db, BUNDLE_DIR)
     assert {r.slug for r in results} == EXPECTED_SLUGS
     assert all(r.created for r in results)
@@ -88,9 +99,11 @@ def test_loading_is_idempotent(db: Session) -> None:
     assert {r.course_id for r in first} == {r.course_id for r in second}
     assert {r.bundle_id for r in first} == {r.bundle_id for r in second}
 
-    assert db.scalar(select(text("count(*)")).select_from(Course)) == 3
-    assert db.scalar(select(text("count(*)")).select_from(CourseBundle)) == 3
-    assert db.scalar(select(text("count(*)")).select_from(CourseBundleLeg)) == 9
+    assert db.scalar(select(text("count(*)")).select_from(Course)) == len(EXPECTED_SLUGS)
+    assert db.scalar(select(text("count(*)")).select_from(CourseBundle)) == len(EXPECTED_SLUGS)
+    assert db.scalar(select(text("count(*)")).select_from(CourseBundleLeg)) == 3 * len(
+        EXPECTED_SLUGS
+    )
 
 
 @needs_bundles
@@ -268,7 +281,7 @@ def test_directory_lists_the_seeded_courses(client: TestClient, seeded: None) ->
     response = client.get("/api/v1/courses")
     assert response.status_code == 200
     body = response.json()
-    assert body["meta"]["total"] == 3
+    assert body["meta"]["total"] == len(EXPECTED_SLUGS)
     assert {row["slug"] for row in body["data"]} == EXPECTED_SLUGS
 
 
@@ -276,7 +289,7 @@ def test_directory_lists_the_seeded_courses(client: TestClient, seeded: None) ->
 def test_directory_filters_by_distance(client: TestClient, seeded: None) -> None:
     response = client.get("/api/v1/courses", params={"dist": "70.3"})
     slugs = {row["slug"] for row in response.json()["data"]}
-    assert slugs == {"kalmar-703", "skagen-703"}
+    assert slugs == {"kalmar-703", "skagen-703", "italy-emilia-romagna-703"}
 
 
 @needs_bundles
