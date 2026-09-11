@@ -113,7 +113,7 @@ inside every block.
 
 ## The API
 
-123 routes. `GET /api/v1/docs` is the live reference; the shape is:
+124 routes. `GET /api/v1/docs` is the live reference; the shape is:
 
 | Area | Routes |
 |---|---|

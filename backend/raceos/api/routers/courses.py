@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from raceos.api.deps import Config, OptionalUser, get_db
+from raceos.api.errors import NotFound, PaymentRequired
 from raceos.api.schemas.course import (
     BundleDetail,
     BundleHistoryEntry,
@@ -22,7 +23,7 @@ from raceos.api.schemas.course import (
     Page,
 )
 from raceos.domain.enums import DistanceType
-from raceos.services import course_service
+from raceos.services import course_service, terrain_service
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
@@ -94,6 +95,34 @@ def get_recon(
     ``access.map_unlocked`` false and a reason rather than silently missing.
     """
     return course_service.course_recon(session, course_ref, settings, viewer)
+
+
+@router.get("/{course_ref}/terrain", summary="The 3D map's terrain field")
+def get_terrain(
+    course_ref: str, session: DbSession, settings: Config, viewer: OptionalUser
+) -> dict[str, object]:
+    """Everything the 3D course map needs, already in slab coordinates.
+
+    The browser does no geography: it receives a height grid, a water mask, a
+    distance-to-shore field and three route lines, all projected, scaled and
+    draped here. See :mod:`raceos.services.terrain_service` — and
+    ``course-map-3d/TRACKS.md`` §5-6, which is the specification this
+    implements.
+
+    Behind the same gate as the rest of the map. The showcase course is open
+    to everyone, because a marketing map nobody can see advertises nothing.
+    """
+    course = course_service._load_course(session, course_ref)
+    if not course_service.visible_to(course, viewer):
+        raise NotFound(f"No course {course_ref!r}.")
+    unlocked, reason = course_service.map_access(session, course, viewer, settings)
+    if not unlocked:
+        raise PaymentRequired(reason or "This course's map is part of a race plan.")
+
+    bundle = course_service._active_bundle(session, course.id)
+    if bundle is None:
+        raise NotFound(f"{course.name} has no course data yet.")
+    return terrain_service.field_for(session, course=course, bundle=bundle, settings=settings)
 
 
 class CutoffQuery(BaseModel):
