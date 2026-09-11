@@ -1,4 +1,17 @@
-"""Free course recon, the cut-off calculator, and push subscriptions."""
+"""Course recon, the cut-off calculator, and push subscriptions.
+
+Recon has two tiers and the split is the product decision, not an accident.
+What someone *chooses a race on* — where it is, how far, how much climbing and
+what the tightest cut-off is — is free to everyone, signed out included,
+because a directory nobody can evaluate is not a front door. The surveyed map
+and the furniture around it are the course work an athlete buys, and they come
+back withheld with a reason rather than silently missing.
+
+The showcase course is the exception in both directions, and these tests pin
+both: its map is open to everyone, because a marketing map nobody can see
+advertises nothing, and it is flagged illustrative so it cannot be mistaken for
+a surveyed one.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from raceos.db.models import Course, PushSubscription
+from raceos.domain.enums import CourseVisibility
 from raceos.ingest.bundle_loader import load_bundle_file
 
 pytestmark = pytest.mark.integration
@@ -24,6 +38,7 @@ needs_bundle = pytest.mark.skipif(
 
 @pytest.fixture
 def course_slug(migrated_engine):
+    """A catalogue course: listed to everyone, map behind the entitlement."""
     from sqlalchemy.orm import sessionmaker
 
     if not TRAMUNTANA.is_file():
@@ -35,6 +50,21 @@ def course_slug(migrated_engine):
         return course.slug
 
 
+@pytest.fixture
+def showcase_slug(migrated_engine):
+    """The signed-out marketing course. Open map, flagged illustrative."""
+    from sqlalchemy.orm import sessionmaker
+
+    if not TRAMUNTANA.is_file():
+        pytest.skip("generated bundles are git-ignored build artefacts")
+    with sessionmaker(bind=migrated_engine)() as session:
+        load_bundle_file(session, TRAMUNTANA)
+        course = session.scalar(select(Course).where(Course.slug == "tramuntana-full"))
+        course.visibility = CourseVisibility.SHOWCASE
+        session.commit()
+        return course.slug
+
+
 # ---------------------------------------------------------------------------
 # Recon — free, and free of athlete data
 # ---------------------------------------------------------------------------
@@ -42,16 +72,14 @@ def course_slug(migrated_engine):
 
 @needs_bundle
 def test_recon_needs_no_account(course_slug: str, api: TestClient) -> None:
-    """The course library is the front door. Behind a paywall it cannot be
-    evaluated."""
+    """The course library is the front door. A 401 here cannot be evaluated."""
     response = api.get(f"/api/v1/courses/{course_slug}/recon")
     assert response.status_code == 200
 
 
 @needs_bundle
-def test_recon_carries_the_whole_course_and_its_attribution(
-    course_slug: str, api: TestClient
-) -> None:
+def test_what_a_race_is_chosen_on_is_free(course_slug: str, api: TestClient) -> None:
+    """Where, how far, how much climbing, tightest cut-off. No account."""
     body = api.get(f"/api/v1/courses/{course_slug}/recon").json()
 
     assert body["course"]["slug"] == course_slug
@@ -59,11 +87,73 @@ def test_recon_carries_the_whole_course_and_its_attribution(
     assert body["totals"]["distance_m"] > 0
     assert body["totals"]["elevation_gain_m"] > 0
     assert body["totals"]["final_cutoff_minutes"]
-    assert body["barriers"], "zero barriers is a data error, never an empty page"
-    assert body["aid_stations"]
-    # ODbL travels with the geometry.
+    assert body["totals"]["final_cutoff_name"]
+    # Per leg, the two facts someone compares races on.
+    for leg in body["legs"]:
+        assert leg["distance_m"] > 0
+        assert leg["elevation_gain_m"] >= 0
+    # ODbL travels with the response whether or not the geometry does.
     assert body["bundle"]["attribution"]
     assert body["bundle"]["provenance"]
+
+
+@needs_bundle
+def test_the_surveyed_map_is_withheld_with_a_reason(course_slug: str, api: TestClient) -> None:
+    """Withheld, not missing.
+
+    A client that had to infer this from an empty coordinate array could not
+    tell "you have not paid for this" from "this course has no geometry", and
+    those two need different screens.
+    """
+    body = api.get(f"/api/v1/courses/{course_slug}/recon").json()
+
+    assert body["access"]["map_unlocked"] is False
+    assert body["access"]["map_locked_reason"]
+    assert body["access"]["illustrative_map"] is False
+
+    assert all(leg["coordinates"] == [] for leg in body["legs"])
+    assert body["barriers"] == []
+    assert body["aid_stations"] == []
+    assert body["segments"] == []
+    assert body["elevation_profile"] == {}
+    assert body["terrain_pmtiles_key"] is None
+
+
+@needs_bundle
+def test_the_showcase_map_is_open_and_says_it_is_illustrative(
+    showcase_slug: str, api: TestClient
+) -> None:
+    """A marketing map nobody can see advertises nothing.
+
+    And a stylised map that does not say it is stylised is a claim about a
+    place rather than a drawing of one, so the note travels with it.
+    """
+    body = api.get(f"/api/v1/courses/{showcase_slug}/recon").json()
+
+    assert body["access"]["map_unlocked"] is True
+    assert body["access"]["illustrative_map"] is True
+    assert "not to scale" in (body["access"]["illustrative_note"] or "").lower()
+
+    assert any(leg["coordinates"] for leg in body["legs"])
+    assert body["barriers"], "zero barriers is a data error, never an empty page"
+    assert body["aid_stations"]
+
+
+@needs_bundle
+def test_a_signed_in_athlete_is_not_shown_the_showcase(
+    showcase_slug: str, api: TestClient, signed_up: dict
+) -> None:
+    """Once there is an account, the showcase is not part of the catalogue.
+
+    A deliberately out-of-scale illustration sitting beside surveyed courses
+    invites the two to be read as the same kind of thing.
+    """
+    listing = api.get("/api/v1/courses", headers=signed_up["headers"]).json()
+    assert showcase_slug not in {row["slug"] for row in listing["data"]}
+    assert (
+        api.get(f"/api/v1/courses/{showcase_slug}/recon", headers=signed_up["headers"]).status_code
+        == 404
+    )
 
 
 @needs_bundle

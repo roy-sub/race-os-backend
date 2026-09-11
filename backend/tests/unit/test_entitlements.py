@@ -207,9 +207,7 @@ def test_full_access_grants_every_action_without_a_purchase() -> None:
     Asserted across the *whole* rule table rather than a sampled action, so a
     rule added later cannot quietly fall outside it.
     """
-    context = EntitlementContext(
-        tier=UserTier.FREE, subscription_active=False, full_access=True
-    )
+    context = EntitlementContext(tier=UserTier.FREE, subscription_active=False, full_access=True)
     for action in RULES:
         decision = decide(action, context)
         assert decision.allowed, action

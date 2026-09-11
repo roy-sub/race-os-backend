@@ -130,6 +130,59 @@ def signed_up(api: TestClient) -> dict[str, object]:
     }
 
 
+#: The address `full_access_api` grants everything to. Matched against
+#: `users.email`, which is CITEXT — the fixture deliberately signs up with a
+#: different capitalisation to prove the match is case-insensitive.
+FULL_ACCESS_EMAIL = "dev.account@example.com"
+
+
+@pytest.fixture
+def full_access_settings(api_settings: Settings) -> Settings:
+    """Settings whose `FULL_ACCESS_EMAILS` names one account.
+
+    A copy rather than a mutation: `Settings` is frozen, and a test that could
+    edit the live object in place would be able to change another test's
+    configuration.
+    """
+    return api_settings.model_copy(
+        update={"full_access_emails": f"  {FULL_ACCESS_EMAIL.upper()} , spare@example.com "}
+    )
+
+
+@pytest.fixture
+def full_access_api(
+    migrated_engine: Engine, full_access_settings: Settings
+) -> Iterator[TestClient]:
+    """The app, configured to grant one account every entitlement."""
+    session_module.reset_engine()
+    session_module._engine = migrated_engine
+    session_module._session_factory = None
+
+    app = create_app(full_access_settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client
+
+    _truncate_all(migrated_engine)
+    session_module.reset_engine()
+
+
+@pytest.fixture
+def full_access_headers(full_access_api: TestClient) -> dict[str, str]:
+    """A signed-in athlete on the configured full-access address."""
+    response = full_access_api.post(
+        "/api/v1/auth/signup",
+        json={
+            # Signed up lower-case, configured upper-case: the grant must not
+            # depend on how someone typed their address.
+            "email": FULL_ACCESS_EMAIL,
+            "password": "correct-horse-battery",
+            "name": "Dev Account",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 @pytest.fixture
 def paywall(api_settings: Settings) -> Iterator[None]:
     """A fresh in-memory payment gateway for each test.

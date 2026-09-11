@@ -271,9 +271,25 @@ def test_every_race_endpoint_rejects_an_absent_token(
 
 
 @needs_bundle
-def test_recon_returns_real_route_coordinates(seeded, api: TestClient) -> None:
-    """A public map must be able to draw the actual course."""
-    body = api.get("/api/v1/courses/tramuntana-full/recon").json()
+def test_recon_returns_real_route_coordinates(
+    full_access_api: TestClient, full_access_headers: dict, migrated_engine
+) -> None:
+    """An entitled athlete's map draws the actual course.
+
+    Run as a full-access account rather than by buying a plan, because what is
+    under test here is the geometry and its coordinate order — not the
+    entitlement, which has its own tests.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    with sessionmaker(bind=migrated_engine)() as session:
+        load_bundle_file(session, TRAMUNTANA)
+        session.commit()
+
+    body = full_access_api.get(
+        "/api/v1/courses/tramuntana-full/recon", headers=full_access_headers
+    ).json()
+    assert body["access"]["map_unlocked"] is True
 
     for leg in body["legs"]:
         coords = leg["coordinates"]

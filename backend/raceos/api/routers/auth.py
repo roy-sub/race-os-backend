@@ -20,6 +20,7 @@ from raceos.api.schemas.auth import (
     AuthResponse,
     ForgotPasswordRequest,
     LoginRequest,
+    ProfileUpdate,
     ResetPasswordRequest,
     SignupRequest,
     UserOut,
@@ -278,4 +279,27 @@ def resend_verification(session: DbSession, settings: Config, user: CurrentUser)
 
 @router.get("/me", summary="The signed-in athlete")
 def me(user: CurrentUser) -> UserOut:
+    return UserOut.model_validate(user)
+
+
+@router.patch("/me", summary="Change your own details")
+def update_me(payload: ProfileUpdate, session: DbSession, user: CurrentUser) -> UserOut:
+    """Whatever was sent, and nothing that was not.
+
+    ``exclude_unset`` matters more here than it looks: a settings form that
+    round-trips the whole object would wipe every field the screen does not
+    render, and the emergency contact is exactly the field a screen forgets.
+    Only keys the client actually sent are written.
+
+    The actor is the token's own user and there is no id parameter, so there is
+    no shape of request that edits somebody else.
+    """
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if field == "country" and isinstance(value, str):
+            value = value.strip().upper()[:2] or None
+        if isinstance(value, str) and field != "country":
+            value = value.strip() or None
+        setattr(user, field, value)
+    session.commit()
+    session.refresh(user)
     return UserOut.model_validate(user)

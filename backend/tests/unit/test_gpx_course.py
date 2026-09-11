@@ -11,6 +11,7 @@ course cannot be loaded under a weaker standard than ours.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 import pytest
 
@@ -21,9 +22,7 @@ from raceos.ingest.elevation import ConstantElevation, decode_terrarium
 
 
 def gpx_of(points: list[tuple[float, float]]) -> bytes:
-    body = "".join(
-        f'<trkpt lat="{lat}" lon="{lng}"><ele>999</ele></trkpt>' for lng, lat in points
-    )
+    body = "".join(f'<trkpt lat="{lat}" lon="{lng}"><ele>999</ele></trkpt>' for lng, lat in points)
     return (
         '<?xml version="1.0"?><gpx version="1.1" creator="test">'
         f"<trk><trkseg>{body}</trkseg></trk></gpx>"
@@ -95,10 +94,7 @@ def test_resampling_spaces_nodes_evenly_and_keeps_the_ends() -> None:
     resampled = gpx_course.resample(points, spacing_m=10.0)
     assert resampled[0] == points[0]
     assert resampled[-1] == points[-1]
-    steps = [
-        gpx_course.haversine_m(a, b)
-        for a, b in zip(resampled, resampled[1:], strict=False)
-    ][:-1]
+    steps = [gpx_course.haversine_m(a, b) for a, b in pairwise(resampled)][:-1]
     assert max(steps) - min(steps) < 0.5
 
 
@@ -125,11 +121,7 @@ def test_the_uploaded_files_own_elevation_is_never_used(
         request_, half_distance_files, elevation=ConstantElevation(12.0)
     )
     assert result.ok, result.problems
-    heights = {
-        round(node[2], 1)
-        for leg in result.legs.values()
-        for node in leg.nodes
-    }
+    heights = {round(node[2], 1) for leg in result.legs.values() for node in leg.nodes}
     assert 999.0 not in heights
     assert heights <= {0.0, 12.0}  # the swim is level water; the rest is the DEM
 
@@ -228,7 +220,7 @@ def test_segments_tile_the_leg_with_no_gap(
         )
         assert rows
         assert rows[0]["from_km"] == 0.0
-        for previous, current in zip(rows, rows[1:], strict=False):
+        for previous, current in pairwise(rows):
             assert current["from_km"] == pytest.approx(previous["to_km"], abs=1e-6)
         assert rows[-1]["to_km"] == pytest.approx(result.legs[leg].distance_km, abs=1e-3)
 

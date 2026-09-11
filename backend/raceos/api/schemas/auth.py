@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -47,6 +47,34 @@ class UserOut(BaseModel):
     avatar_url: str | None
     email_verified_at: datetime | None
     country: str | None
+    #: Equipment and personal facts the settings screen edits. Present on the
+    #: athlete's own record only — no endpoint returns another user's.
+    date_of_birth: date | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    created_at: datetime | None = None
+
+
+class ProfileUpdate(BaseModel):
+    """What an athlete may change about themselves.
+
+    Deliberately excludes ``email`` and ``tier``. Changing an email is an
+    identity change and needs re-verification to be one — a field on a settings
+    form that silently moved someone's sign-in would be an account-takeover
+    primitive. Tier is what the billing system decided, so letting a client
+    send it would make the paywall a suggestion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=120)
+    date_of_birth: date | None = None
+    country: str | None = Field(default=None, max_length=2)
+    emergency_contact_name: str | None = Field(default=None, max_length=120)
+    emergency_contact_phone: str | None = Field(default=None, max_length=40)
+    units: UnitSystem | None = None
+    level: AthleteLevel | None = None
+    currency: Currency | None = None
 
 
 class AuthResponse(BaseModel):
