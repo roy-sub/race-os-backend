@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from raceos.api.errors import Conflict, InvalidInput, NotFound, PaymentRequired
-from raceos.config import Settings
+from raceos.config import Settings, get_settings
 from raceos.db.models import (
     Invoice,
     Plan,
@@ -120,11 +120,26 @@ def has_open_authorization_for_race(session: Session, *, user_id: UUID, race_id:
     return bool(count)
 
 
-def context_for(session: Session, *, user: User, race_id: UUID | None = None) -> EntitlementContext:
+def context_for(
+    session: Session,
+    *,
+    user: User,
+    race_id: UUID | None = None,
+    settings: Settings | None = None,
+) -> EntitlementContext:
+    """Gather the facts :func:`decide` needs.
+
+    ``settings`` is optional only so the many internal callers that do not
+    hold one keep working; when it is absent the process-wide settings are
+    read, which is the same object the app was built with in every
+    configuration this service runs under.
+    """
+    configuration = settings if settings is not None else get_settings()
     subscription = _active_subscription(session, user.id)
     return EntitlementContext(
         tier=user.tier,
         subscription_active=subscription is not None,
+        full_access=configuration.has_full_access(user.email),
         has_race_purchase=(
             has_captured_purchase_for_race(session, user_id=user.id, race_id=race_id)
             if race_id is not None
@@ -139,16 +154,26 @@ def context_for(session: Session, *, user: User, race_id: UUID | None = None) ->
 
 
 def check(
-    session: Session, *, user: User, action: EntitlementAction, race_id: UUID | None = None
+    session: Session,
+    *,
+    user: User,
+    action: EntitlementAction,
+    race_id: UUID | None = None,
+    settings: Settings | None = None,
 ) -> Decision:
-    return decide(action, context_for(session, user=user, race_id=race_id))
+    return decide(action, context_for(session, user=user, race_id=race_id, settings=settings))
 
 
 def require(
-    session: Session, *, user: User, action: EntitlementAction, race_id: UUID | None = None
+    session: Session,
+    *,
+    user: User,
+    action: EntitlementAction,
+    race_id: UUID | None = None,
+    settings: Settings | None = None,
 ) -> None:
     """Raise 402 with the upgrade path when the action is not entitled."""
-    decision = check(session, user=user, action=action, race_id=race_id)
+    decision = check(session, user=user, action=action, race_id=race_id, settings=settings)
     if decision.allowed:
         return
     raise PaymentRequired(

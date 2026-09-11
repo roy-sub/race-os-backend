@@ -197,6 +197,16 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Payments — Stripe, test mode in V1
     # ------------------------------------------------------------------
+    #: Accounts that are granted every entitlement without a payment.
+    #:
+    #: This is the developer and demo path, and it is deliberately a
+    #: *configuration* value rather than a column or a hardcoded address: a
+    #: grant that lives in an environment variable can be withdrawn by an
+    #: operator in one deploy, and it can never be set by anything a user
+    #: sends. It short-circuits the entitlement decision only — it creates no
+    #: purchase, writes no invoice and charges nothing, so a full-access
+    #: account never appears in revenue.
+    full_access_emails: str = ""
     stripe_secret_key: SecretStr = SecretStr("")
     stripe_publishable_key: str = ""
     stripe_webhook_secret: SecretStr = SecretStr("")
@@ -217,6 +227,25 @@ class Settings(BaseSettings):
     # Terrain tiles (frontend map)
     # ------------------------------------------------------------------
     terrain_pmtiles_base_url: str = "https://demo.mapterhorn.com"
+
+    # ------------------------------------------------------------------
+    # Elevation model — sampled when an athlete submits their own course
+    # ------------------------------------------------------------------
+    #: Terrarium-encoded DEM tiles. The same tile set and the same pinned
+    #: encoding the offline ingest pipeline uses
+    #: (``pipelines/course-ingest/config/sources.yaml``), so a course an
+    #: athlete submits and a course we generate take their heights from one
+    #: source and are comparable. ``SOLVER_MODEL.md`` §1.2 forbids using an
+    #: uploaded file's own barometric or GPS elevation, which is why this
+    #: exists at all.
+    elevation_tile_url: str = (
+        "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
+    )
+    #: ~7 m/px at mid latitudes, which resolves 10 m nodes without
+    #: over-sampling a ~30 m native DEM.
+    elevation_sample_zoom: int = Field(default=14, ge=8, le=15)
+    elevation_request_timeout_seconds: int = Field(default=120, ge=1, le=600)
+    elevation_attribution: str = "AWS Terrain Tiles"
 
     # ------------------------------------------------------------------
     # Solver
@@ -426,6 +455,26 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env is AppEnv.PRODUCTION
+
+    @property
+    def full_access_email_set(self) -> frozenset[str]:
+        """Casefolded addresses from ``FULL_ACCESS_EMAILS``.
+
+        Casefolded because the ``users.email`` column is CITEXT and a grant
+        that depended on the capitalisation someone typed at signup would be a
+        grant that silently stopped working.
+        """
+        return frozenset(
+            address.strip().casefold()
+            for address in self.full_access_emails.split(",")
+            if address.strip()
+        )
+
+    def has_full_access(self, email: str | None) -> bool:
+        """Whether this address is one of the configured full-access accounts."""
+        if not email:
+            return False
+        return email.strip().casefold() in self.full_access_email_set
 
     @property
     def cors_origin_list(self) -> tuple[str, ...]:

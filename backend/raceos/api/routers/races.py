@@ -22,7 +22,7 @@ from raceos.api.deps import CurrentUser, DbSession
 from raceos.api.errors import Conflict, InvalidInput, NotFound
 from raceos.api.schemas.race import RaceCreate, RaceOut, RaceUpdate
 from raceos.db.models import Course, CourseBundle, Plan, Race
-from raceos.domain.enums import PlanStatus, RaceStatus
+from raceos.domain.enums import CourseAvailability, PlanStatus, RaceStatus
 from raceos.services import course_service
 
 router = APIRouter(prefix="/api/v1/races", tags=["races"])
@@ -80,6 +80,21 @@ def create_race(payload: RaceCreate, session: DbSession, user: CurrentUser) -> R
         )
 
     course = course_service._load_course(session, payload.course_ref)
+    if not course_service.visible_to(course, user):
+        # The showcase course and other athletes' submissions answer the same
+        # way a missing slug does — see `course_service.visible_to`.
+        raise NotFound(f"No course {payload.course_ref!r}.")
+    if course.availability is not CourseAvailability.AVAILABLE:
+        raise Conflict(
+            f"{course.name} is on the calendar for "
+            f"{course.next_edition_date.strftime('%-d %B %Y')} but its course "
+            f"data is not published yet, so it cannot be planned for. You can "
+            f"add the course yourself if you have the route files."
+            if course.next_edition_date
+            else (
+                f"{course.name} has no published course data yet, so it cannot " f"be planned for."
+            )
+        )
     bundle = course_service._active_bundle(session, course.id)
     if bundle is None:
         raise Conflict(

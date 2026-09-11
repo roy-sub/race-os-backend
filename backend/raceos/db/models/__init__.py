@@ -21,6 +21,7 @@ from raceos.db.models.course import (
     CourseBundle,
     CourseBundleDiff,
     CourseBundleLeg,
+    CourseSubmission,
     Race,
 )
 from raceos.db.models.identity import (
@@ -91,6 +92,7 @@ __all__ = [
     "CourseBundle",
     "CourseBundleDiff",
     "CourseBundleLeg",
+    "CourseSubmission",
     "CrowdReport",
     "CrowdReportUpload",
     "EmailMessage",

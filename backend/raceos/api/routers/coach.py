@@ -144,20 +144,26 @@ def revoke_link(link_id: UUID, session: DbSession, user: CurrentUser) -> CoachLi
 
 
 @router.get("/board", summary="Race-week board across linked athletes")
-def get_board(session: DbSession, user: CurrentUser) -> list[BoardRowOut]:
+def get_board(session: DbSession, user: CurrentUser, settings: Config) -> list[BoardRowOut]:
     """Coach tier only.
 
     An athlete who has not granted plan access still appears, with their
     numbers withheld and a reason — hiding them would make a coach think the
     invite failed.
     """
-    billing_service.require(session, user=user, action=EntitlementAction.COACH_BOARD)
+    billing_service.require(
+        session, user=user, action=EntitlementAction.COACH_BOARD, settings=settings
+    )
     return [_row(row) for row in coach_service.board(session, coach=user)]
 
 
 @router.post("/compare", summary="Compare chosen athletes side by side")
-def compare(payload: CompareRequest, session: DbSession, user: CurrentUser) -> list[BoardRowOut]:
-    billing_service.require(session, user=user, action=EntitlementAction.COACH_BOARD)
+def compare(
+    payload: CompareRequest, session: DbSession, user: CurrentUser, settings: Config
+) -> list[BoardRowOut]:
+    billing_service.require(
+        session, user=user, action=EntitlementAction.COACH_BOARD, settings=settings
+    )
     rows = coach_service.compare(session, coach=user, athlete_ids=payload.athlete_ids)
     return [_row(row) for row in rows]
 

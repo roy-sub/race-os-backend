@@ -40,11 +40,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from raceos.db.base import CreatedOnly, Entity, Json, JsonArray, JsonObject, pg_enum
 from raceos.domain.enums import (
     BundleStatus,
+    CourseAvailability,
+    CourseVisibility,
     Difficulty,
     DistanceType,
     Leg,
     Provenance,
     RaceStatus,
+    SubmissionStatus,
     SurfaceQuality,
 )
 
@@ -79,10 +82,51 @@ class Course(Entity):
         Boolean, nullable=False, default=True, server_default=text("true")
     )
 
+    #: Whether this row can be entered as a race yet.
+    #:
+    #: A listed course with no course data is a real product state, not an
+    #: oversight: the season is announced as a whole and the bundles land one
+    #: at a time. Storing it rather than inferring it from "has a bundle"
+    #: means an event can be listed as coming soon while its bundle is being
+    #: reviewed, and a bundle that fails review does not silently promote a
+    #: row to bookable.
+    availability: Mapped[CourseAvailability] = mapped_column(
+        pg_enum(CourseAvailability, "course_availability"),
+        nullable=False,
+        default=CourseAvailability.COMING_SOON,
+        server_default=text("'coming_soon'"),
+    )
+    #: Catalogue row, or the signed-out showcase. See :class:`CourseVisibility`.
+    visibility: Mapped[CourseVisibility] = mapped_column(
+        pg_enum(CourseVisibility, "course_visibility"),
+        nullable=False,
+        default=CourseVisibility.CATALOGUE,
+        server_default=text("'catalogue'"),
+    )
+    #: The published date of the next edition, where the organiser has
+    #: announced one.
+    #:
+    #: A *race* still owns the date an athlete plans against — this column
+    #: does not change that and nothing solves from it. It exists because a
+    #: directory of dateless venues is unusable for choosing a race, which is
+    #: the one job the directory has.
+    next_edition_date: Mapped[date | None] = mapped_column(Date)
+    #: The organiser's own event name, where it differs from :attr:`name`.
+    official_event_name: Mapped[str | None] = mapped_column(Text)
+    #: Who submitted this course, when an athlete added it themselves.
+    #:
+    #: Null for everything in the official catalogue. A non-null value makes
+    #: the row private to that athlete — see ``course_service.list_courses``.
+    submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+
     bundles: Mapped[list[CourseBundle]] = relationship(back_populates="course")
 
     __table_args__ = (
         Index("ix_courses_distance_type", "distance_type"),
+        Index("ix_courses_visibility", "visibility"),
+        Index("ix_courses_submitted_by_user_id", "submitted_by_user_id"),
         CheckConstraint("lat BETWEEN -90 AND 90", name="courses_lat_range"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="courses_lng_range"),
     )
@@ -279,4 +323,78 @@ class Race(Entity):
         Index("ix_races_user_id_status", "user_id", "status"),
         Index("ix_races_event_date", "event_date"),
         Index("ix_races_course_bundle_id", "course_bundle_id"),
+    )
+
+
+class CourseSubmission(Entity):
+    """An athlete adding a race the catalogue does not carry yet.
+
+    **The athlete is not blocked on our release schedule.** Fifteen events are
+    listed and one has course data; an athlete racing the sixteenth should not
+    have to wait, and the files they already hold — the athlete guide's GPX,
+    or a route they traced — are enough to build a real bundle from.
+
+    The row is a *workflow*, not a course. It holds what was uploaded and what
+    happened to it, and on success it points at the :class:`Course` that was
+    created. Keeping the two separate is what lets a failed submission carry
+    its problems back to the athlete without a broken half-course existing in
+    the directory for even a moment.
+
+    Uploaded files live in object storage, never in this table: a 90 km GPX is
+    megabytes, and a database is not a file system.
+    """
+
+    __tablename__ = "course_submissions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[SubmissionStatus] = mapped_column(
+        pg_enum(SubmissionStatus, "submission_status"),
+        nullable=False,
+        default=SubmissionStatus.DRAFT,
+        server_default=text("'draft'"),
+    )
+
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    place: Mapped[str] = mapped_column(Text, nullable=False)
+    country: Mapped[str | None] = mapped_column(String(2))
+    timezone: Mapped[str] = mapped_column(Text, nullable=False)
+    distance_type: Mapped[DistanceType] = mapped_column(
+        pg_enum(DistanceType, "distance_type"), nullable=False
+    )
+    lat: Mapped[float] = mapped_column(Numeric, nullable=False)
+    lng: Mapped[float] = mapped_column(Numeric, nullable=False)
+    #: The edition the athlete is entering. Not solved from — it becomes the
+    #: default when they enter the race — but it is what makes the submission
+    #: about a specific running of the event rather than about a venue.
+    event_date: Mapped[date | None] = mapped_column(Date)
+    start_time_local: Mapped[time | None] = mapped_column(Time)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    #: Storage keys for the three uploaded route files, one per leg.
+    swim_file_key: Mapped[str | None] = mapped_column(Text)
+    bike_file_key: Mapped[str | None] = mapped_column(Text)
+    run_file_key: Mapped[str | None] = mapped_column(Text)
+    #: The names the athlete's own files had, so an error can name the file
+    #: they recognise rather than a storage key they have never seen.
+    file_names: Mapped[JsonObject] = mapped_column(
+        Json, nullable=False, server_default=text("'{}'")
+    )
+
+    #: Everything wrong with the last attempt, in the athlete's own terms.
+    #: Emptied on a successful run rather than left behind, so a stale problem
+    #: cannot be shown against a course that now works.
+    problems: Mapped[JsonArray] = mapped_column(Json, nullable=False, server_default=text("'[]'"))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Set once the bundle is built and loaded. Null until then.
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        Index("ix_course_submissions_user_id", "user_id"),
+        Index("ix_course_submissions_status", "status"),
+        CheckConstraint("lat BETWEEN -90 AND 90", name="course_submissions_lat_range"),
+        CheckConstraint("lng BETWEEN -180 AND 180", name="course_submissions_lng_range"),
     )

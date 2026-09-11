@@ -146,7 +146,11 @@ def solve_plan(
     # 402 with the upgrade path, before any work is done. Refusing after the
     # solve would burn the SLA to produce something we then withhold.
     billing_service.require(
-        session, user=user, action=EntitlementAction.SOLVE_PLAN, race_id=plan.race_id
+        session,
+        user=user,
+        action=EntitlementAction.SOLVE_PLAN,
+        race_id=plan.race_id,
+        settings=settings,
     )
 
     if payload.carb_override is not None:
@@ -216,7 +220,11 @@ def resolve_plan(
     """
     plan = plan_service.get_plan(session, plan_id=plan_id, user=user)
     billing_service.require(
-        session, user=user, action=EntitlementAction.DRIFT_RESOLVE, race_id=plan.race_id
+        session,
+        user=user,
+        action=EntitlementAction.DRIFT_RESOLVE,
+        race_id=plan.race_id,
+        settings=settings,
     )
     result = plan_service.solve_plan(session, plan=plan, user=user, settings=settings, force=True)
     session.commit()

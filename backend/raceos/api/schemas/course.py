@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from raceos.domain.enums import (
     BundleStatus,
+    CourseAvailability,
+    CourseVisibility,
     Difficulty,
     DistanceType,
     Leg,
@@ -58,6 +60,30 @@ class CourseSummary(BaseModel):
     lat: float
     lng: float
     is_fictional: bool
+
+    #: Whether this event can be entered yet. A ``coming_soon`` row is listed
+    #: on purpose: the season is announced as a whole, the course data lands
+    #: one event at a time, and hiding the rest would misrepresent the season.
+    availability: CourseAvailability = CourseAvailability.COMING_SOON
+    #: Catalogue row or signed-out showcase. See :class:`CourseVisibility`.
+    visibility: CourseVisibility = CourseVisibility.CATALOGUE
+    #: The organiser's announced date for the next edition, where there is one.
+    #: Display only — an athlete's own race still owns the date they plan to.
+    next_edition_date: date | None = None
+    official_event_name: str | None = None
+    #: True when the athlete reading this added the course themselves.
+    is_user_submitted: bool = False
+
+    #: Whether the caller may see this course's geometry, elevation series and
+    #: furniture. Sent so a client renders the correct state in one request
+    #: rather than discovering the gate by being refused.
+    map_unlocked: bool = False
+    #: Why not, when ``map_unlocked`` is false. Written for the athlete.
+    map_locked_reason: str | None = None
+    #: Set on the showcase course only. The signed-out hero map is a tuned,
+    #: deliberately out-of-scale illustration, and it says so on its face
+    #: rather than in a footnote nobody reads.
+    illustrative_map: bool = False
 
     #: From the published bundle, when one exists. A course with no published
     #: bundle is still listed — it just cannot be solved against yet.

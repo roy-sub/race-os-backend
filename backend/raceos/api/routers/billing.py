@@ -46,6 +46,7 @@ def list_prices(session: DbSession) -> list[PriceOut]:
 def list_entitlements(
     session: DbSession,
     user: CurrentUser,
+    settings: Config,
     race_id: Annotated[
         UUID | None, Query(description="Scope race-specific actions to this race")
     ] = None,
@@ -58,7 +59,9 @@ def list_entitlements(
     """
     out: list[EntitlementOut] = []
     for action in RULES:
-        decision = billing_service.check(session, user=user, action=action, race_id=race_id)
+        decision = billing_service.check(
+            session, user=user, action=action, race_id=race_id, settings=settings
+        )
         out.append(
             EntitlementOut(
                 action=decision.action.value,

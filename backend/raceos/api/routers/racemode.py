@@ -41,7 +41,11 @@ def race_mode(
     if plan.status is PlanStatus.DRAFT or plan.solved_at is None:
         raise Conflict("Solve this plan before taking it to the start line.")
     billing_service.require(
-        session, user=user, action=EntitlementAction.RACE_MODE, race_id=plan.race_id
+        session,
+        user=user,
+        action=EntitlementAction.RACE_MODE,
+        race_id=plan.race_id,
+        settings=settings,
     )
 
     race = session.get(Race, plan.race_id)

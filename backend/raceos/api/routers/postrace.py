@@ -89,6 +89,7 @@ def create_analysis(
         user=user,
         action=EntitlementAction.POST_RACE_ANALYSIS,
         race_id=plan.race_id,
+        settings=settings,
     )
 
     analysis = postrace_service.analyse(
@@ -142,6 +143,7 @@ def apply_calibration(
         user=user,
         action=EntitlementAction.CONSTRAINT_CALIBRATION,
         race_id=plan.race_id if plan else None,
+        settings=settings,
     )
 
     postrace_service.apply_calibration(session, calibration=calibration, user=user)

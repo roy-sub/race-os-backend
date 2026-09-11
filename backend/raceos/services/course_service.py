@@ -29,8 +29,8 @@ from raceos.api.schemas.course import (
     LegSummary,
 )
 from raceos.config import Settings
-from raceos.db.models import Course, CourseBundle
-from raceos.domain.enums import BundleStatus, DistanceType
+from raceos.db.models import Course, CourseBundle, User
+from raceos.domain.enums import BundleStatus, CourseVisibility, DistanceType
 
 #: Barrier names that represent the headline cut-off, most significant first.
 #: A course without a bike cut-off (Olympic, Sprint) falls through to the
@@ -75,8 +75,104 @@ def _active_bundle(session: Session, course_id: UUID) -> CourseBundle | None:
     )
 
 
-def _summarise(session: Session, course: Course) -> CourseSummary:
+#: What a signed-out visitor is told when they open a catalogue course.
+SIGNED_OUT_MAP_REASON = (
+    "Course maps, elevation and cut-off detail are part of a race plan. "
+    "Create an account to open them."
+)
+#: What a signed-in athlete without an entitlement is told.
+LOCKED_MAP_REASON = (
+    "This race's surveyed map, elevation profile and cut-off ladder open with " "the race plan."
+)
+
+
+def is_showcase(course: Course) -> bool:
+    """The one course the signed-out marketing pages draw their map from."""
+    return course.visibility is CourseVisibility.SHOWCASE
+
+
+def visible_to(course: Course, viewer: User | None) -> bool:
+    """Whether *viewer* should be shown *course* at all.
+
+    Three rules, and each exists for a reason that is about the product rather
+    than about security — nothing here is a secret:
+
+    * A retired course is listed to nobody. It survives only so a plan solved
+      against it still has a name.
+    * The showcase is listed to signed-out visitors only. Once someone has an
+      account, a stylised illustration sitting next to surveyed courses would
+      invite the two to be compared as though they were the same kind of
+      thing.
+    * A course an athlete submitted themselves belongs to that athlete.
+    """
+    if course.visibility is CourseVisibility.RETIRED:
+        return False
+    if course.visibility is CourseVisibility.SHOWCASE:
+        return viewer is None
+    if course.submitted_by_user_id is not None:
+        return viewer is not None and course.submitted_by_user_id == viewer.id
+    return True
+
+
+def map_access(
+    session: Session,
+    course: Course,
+    viewer: User | None,
+    settings: Settings,
+) -> tuple[bool, str | None]:
+    """Whether *viewer* may see this course's geometry, and why not if not.
+
+    The showcase is open to everyone: it is the marketing map, and a locked
+    marketing map advertises nothing. Everything else is part of the race plan
+    an athlete buys, which is what makes the directory a free evaluation of
+    *which* race rather than a free copy of the product.
+    """
+    if is_showcase(course):
+        return True, None
+    if viewer is None:
+        return False, SIGNED_OUT_MAP_REASON
+    if course.submitted_by_user_id == viewer.id:
+        # An athlete who supplied the course file is not paywalled out of it.
+        return True, None
+
+    from raceos.db.models import Race
+    from raceos.domain.entitlements import EntitlementAction
+    from raceos.services import billing_service
+
+    # Scoped to this athlete's own entry for this course, when they have one:
+    # a per-race purchase is what unlocks the map for the race they bought,
+    # and an unscoped check could only ever answer for a subscription.
+    race = session.scalar(
+        select(Race)
+        .where(Race.user_id == viewer.id, Race.course_id == course.id)
+        .order_by(Race.event_date.desc())
+        .limit(1)
+    )
+    decision = billing_service.check(
+        session,
+        user=viewer,
+        action=EntitlementAction.COURSE_MAP,
+        race_id=race.id if race is not None else None,
+        settings=settings,
+    )
+    if decision.allowed:
+        return True, None
+    return False, decision.reason or LOCKED_MAP_REASON
+
+
+def _summarise(
+    session: Session,
+    course: Course,
+    viewer: User | None = None,
+    settings: Settings | None = None,
+) -> CourseSummary:
     summary = CourseSummary.model_validate(course)
+    summary.is_user_submitted = course.submitted_by_user_id is not None
+    summary.illustrative_map = is_showcase(course)
+    if settings is not None:
+        unlocked, reason = map_access(session, course, viewer, settings)
+        summary.map_unlocked = unlocked
+        summary.map_locked_reason = reason
     bundle = _active_bundle(session, course.id)
     if bundle is not None:
         summary.provenance = PROVENANCE_DISPLAY[bundle.provenance]
@@ -87,6 +183,24 @@ def _summarise(session: Session, course: Course) -> CourseSummary:
     return summary
 
 
+def _visible_filter(viewer: User | None) -> Any:
+    """The SQL half of :func:`visible_to`, so paging counts agree with it."""
+    from sqlalchemy import and_, or_
+
+    clauses = [Course.visibility != CourseVisibility.RETIRED]
+    if viewer is None:
+        clauses.append(Course.submitted_by_user_id.is_(None))
+    else:
+        clauses.append(Course.visibility != CourseVisibility.SHOWCASE)
+        clauses.append(
+            or_(
+                Course.submitted_by_user_id.is_(None),
+                Course.submitted_by_user_id == viewer.id,
+            )
+        )
+    return and_(*clauses)
+
+
 def list_courses(
     session: Session,
     *,
@@ -94,10 +208,19 @@ def list_courses(
     query: str | None = None,
     limit: int = 25,
     offset: int = 0,
+    viewer: User | None = None,
+    settings: Settings | None = None,
 ) -> tuple[list[CourseSummary], int]:
-    """The race directory. Public; no athlete data is involved."""
-    statement = select(Course)
-    count_statement = select(Course)
+    """The race directory.
+
+    Public, and richer when signed in — but *narrower*, not wider: a signed-in
+    athlete sees the real season and not the marketing showcase. Ordering is by
+    the announced date, because a directory of dated events is being read to
+    answer "which race next?" and alphabetical order answers nothing.
+    """
+    visible = _visible_filter(viewer)
+    statement = select(Course).where(visible)
+    count_statement = select(Course).where(visible)
 
     if distance_type is not None:
         statement = statement.where(Course.distance_type == distance_type)
@@ -110,8 +233,12 @@ def list_courses(
         )
 
     total = len(session.scalars(count_statement).all())
-    courses = session.scalars(statement.order_by(Course.name).limit(limit).offset(offset)).all()
-    return [_summarise(session, course) for course in courses], total
+    courses = session.scalars(
+        statement.order_by(Course.next_edition_date.asc().nullslast(), Course.name)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return [_summarise(session, course, viewer, settings) for course in courses], total
 
 
 def _load_course(session: Session, course_ref: str) -> Course:
@@ -131,9 +258,19 @@ def _bundle_summary(bundle: CourseBundle) -> BundleSummary:
     return summary
 
 
-def get_course(session: Session, course_ref: str) -> CourseDetail:
+def get_course(
+    session: Session,
+    course_ref: str,
+    viewer: User | None = None,
+    settings: Settings | None = None,
+) -> CourseDetail:
     course = _load_course(session, course_ref)
-    detail = CourseDetail.model_validate(_summarise(session, course).model_dump())
+    if not visible_to(course, viewer):
+        # Deliberately the same answer as a slug that does not exist. There is
+        # nothing secret here, but a directory that says "this exists, you may
+        # not see it" reads as a bug to the athlete it happens to.
+        raise NotFound(f"No course {course_ref!r}.")
+    detail = CourseDetail.model_validate(_summarise(session, course, viewer, settings).model_dump())
     bundle = _active_bundle(session, course.id)
     if bundle is not None:
         detail.active_bundle = _bundle_summary(bundle)
@@ -230,19 +367,40 @@ def _downsample(points: list[list[float]], limit: int) -> list[list[float]]:
     return kept
 
 
-def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[str, Any]:
-    """Everything the free recon page shows for one course.
+def course_recon(
+    session: Session,
+    course_ref: str,
+    settings: Settings,
+    viewer: User | None = None,
+) -> dict[str, Any]:
+    """Everything the recon page shows for one course.
 
-    Free for everyone, deliberately: the course library is the front door, and
-    a cut-off calculator behind a paywall makes the product impossible to
-    evaluate. **No athlete data is involved**, so this needs no session and
-    leaks nothing — the numbers below describe the course, not anyone racing
-    it.
+    **Two tiers, and the split is deliberate.** The part that helps someone
+    choose a race — where it is, how far, how much climbing, what the tightest
+    cut-off is, and the cut-off calculator that runs off it — stays free for
+    everyone, signed out included. That is the evaluation the directory
+    exists to support.
+
+    The surveyed map itself does not: leg geometry, the elevation series, the
+    named segments, the aid stations and the barrier ladder are the course
+    work an athlete buys, and they are withheld behind ``map_unlocked`` with a
+    reason attached rather than silently omitted.
+
+    The showcase course is the exception in both directions: its map is open
+    to everyone, because a marketing map nobody can see advertises nothing,
+    and it is flagged ``illustrative`` so it can never be mistaken for a
+    surveyed one.
     """
     course = _load_course(session, course_ref)
+    if not visible_to(course, viewer):
+        raise NotFound(f"No course {course_ref!r}.")
     bundle = _active_bundle(session, course.id)
     if bundle is None:
-        raise NotFound(f"Course {course.slug!r} has no bundle yet.")
+        raise NotFound(
+            f"{course.name} has no course data yet. It is on the calendar and "
+            f"its map is being built."
+        )
+    unlocked, locked_reason = map_access(session, course, viewer, settings)
 
     legs = _ordered_legs(bundle)
     barriers = list(bundle.barriers or [])
@@ -263,6 +421,25 @@ def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[
             "lat": float(course.lat),
             "lng": float(course.lng),
             "is_fictional": course.is_fictional,
+            "availability": course.availability.value,
+            "next_edition_date": (
+                course.next_edition_date.isoformat() if course.next_edition_date else None
+            ),
+            "is_user_submitted": course.submitted_by_user_id is not None,
+        },
+        "access": {
+            "map_unlocked": unlocked,
+            "map_locked_reason": locked_reason,
+            # The showcase map is a tuned graphic whose three legs disagree on
+            # scale by 14.5x. Saying so next to it is the difference between a
+            # stylisation and a false claim.
+            "illustrative_map": is_showcase(course),
+            "illustrative_note": (
+                "Illustrative map, not to scale. Surveyed, true-scale maps "
+                "built from real course and terrain data open with a race plan."
+                if is_showcase(course)
+                else None
+            ),
         },
         "bundle": {
             "version": bundle.version,
@@ -280,11 +457,15 @@ def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[
                 "elevation_gain_m": float(leg.elevation_gain_m),
                 "node_count": leg.node_count,
                 "surface_quality": leg.surface_quality.value,
-                # The actual route, so a public map can draw the real course
-                # rather than a placeholder. Downsampled: a browser drawing a
+                # The actual route, so a map can draw the real course rather
+                # than a placeholder. Downsampled: a browser drawing a
                 # polyline gains nothing from 10 m spacing, and the full
-                # series is a megabyte per leg.
-                "coordinates": _downsample(_leg_coordinates(leg), MAP_MAX_POINTS),
+                # series is a megabyte per leg. Empty when the map is locked —
+                # the leg's distance and climb still ship, because those are
+                # the facts someone chooses a race on.
+                "coordinates": (
+                    _downsample(_leg_coordinates(leg), MAP_MAX_POINTS) if unlocked else []
+                ),
             }
             for leg in legs
         ],
@@ -294,12 +475,14 @@ def course_recon(session: Session, course_ref: str, settings: Settings) -> dict[
             "final_cutoff_minutes": cutoff_minutes,
             "final_cutoff_name": cutoff_name,
         },
-        "barriers": barriers,
-        "aid_stations": list(bundle.aid_stations or []),
-        "waypoints": list(bundle.waypoints or []),
-        "segments": list(bundle.segments or []),
-        "elevation_profile": bundle.elevation_profile or {},
-        "terrain_pmtiles_key": bundle.terrain_pmtiles_key,
+        # The headline cut-off travels in `totals` either way, so the free
+        # cut-off calculator still works on a locked course.
+        "barriers": barriers if unlocked else [],
+        "aid_stations": list(bundle.aid_stations or []) if unlocked else [],
+        "waypoints": list(bundle.waypoints or []) if unlocked else [],
+        "segments": list(bundle.segments or []) if unlocked else [],
+        "elevation_profile": (bundle.elevation_profile or {}) if unlocked else {},
+        "terrain_pmtiles_key": bundle.terrain_pmtiles_key if unlocked else None,
     }
 
 

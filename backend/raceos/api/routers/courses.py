@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from raceos.api.deps import Config, get_db
+from raceos.api.deps import Config, OptionalUser, get_db
 from raceos.api.schemas.course import (
     BundleDetail,
     BundleHistoryEntry,
@@ -32,13 +32,27 @@ DbSession = Annotated[Session, Depends(get_db)]
 @router.get("", summary="Race directory")
 def list_courses(
     session: DbSession,
+    settings: Config,
+    viewer: OptionalUser,
     dist: Annotated[DistanceType | None, Query(description="Filter by distance type")] = None,
     q: Annotated[str | None, Query(description="Search name and place")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page:
+    """Public, and *narrower* when signed in rather than wider.
+
+    A signed-out visitor sees the marketing showcase alongside the season; a
+    signed-in athlete sees the season and their own submitted courses, and not
+    the showcase — see ``course_service.visible_to`` for why.
+    """
     courses, total = course_service.list_courses(
-        session, distance_type=dist, query=q, limit=limit, offset=offset
+        session,
+        distance_type=dist,
+        query=q,
+        limit=limit,
+        offset=offset,
+        viewer=viewer,
+        settings=settings,
     )
     return Page(
         data=[c.model_dump(mode="json") for c in courses],
@@ -47,8 +61,10 @@ def list_courses(
 
 
 @router.get("/{course_ref}", summary="Course detail")
-def get_course(course_ref: str, session: DbSession) -> CourseDetail:
-    return course_service.get_course(session, course_ref)
+def get_course(
+    course_ref: str, session: DbSession, settings: Config, viewer: OptionalUser
+) -> CourseDetail:
+    return course_service.get_course(session, course_ref, viewer, settings)
 
 
 @router.get("/{course_ref}/bundle", summary="The bundle a client should read")
@@ -65,15 +81,19 @@ def get_bundle_history(course_ref: str, session: DbSession) -> list[BundleHistor
     return course_service.get_bundle_history(session, course_ref)
 
 
-@router.get("/{course_ref}/recon", summary="Everything the free recon page shows")
-def get_recon(course_ref: str, session: DbSession, settings: Config) -> dict[str, object]:
-    """Public and free, deliberately.
+@router.get("/{course_ref}/recon", summary="Everything the recon page shows")
+def get_recon(
+    course_ref: str, session: DbSession, settings: Config, viewer: OptionalUser
+) -> dict[str, object]:
+    """Public, with the map itself gated.
 
-    The course library is the front door. Putting recon behind a paywall makes
-    the product impossible to evaluate, and no athlete data is involved here —
-    these numbers describe the course, not anyone racing it.
+    What a race is chosen on — where, how far, how much climbing, the tightest
+    cut-off — is free to everyone including signed-out visitors, because a
+    directory nobody can evaluate is not a front door. The surveyed geometry
+    and the furniture around it are part of the race plan, and arrive with
+    ``access.map_unlocked`` false and a reason rather than silently missing.
     """
-    return course_service.course_recon(session, course_ref, settings)
+    return course_service.course_recon(session, course_ref, settings, viewer)
 
 
 class CutoffQuery(BaseModel):

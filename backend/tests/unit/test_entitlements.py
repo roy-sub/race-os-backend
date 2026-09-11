@@ -194,3 +194,51 @@ def test_no_paid_action_is_granted_to_a_bare_free_account() -> None:
         if rule.grant is Grant.EVERYONE:
             continue
         assert not _allowed(action, FREE), f"{action.value} leaked to the free tier"
+
+
+# ---------------------------------------------------------------------------
+# Full-access accounts
+# ---------------------------------------------------------------------------
+
+
+def test_full_access_grants_every_action_without_a_purchase() -> None:
+    """The developer and demo path: allowed everything, owing nothing.
+
+    Asserted across the *whole* rule table rather than a sampled action, so a
+    rule added later cannot quietly fall outside it.
+    """
+    context = EntitlementContext(
+        tier=UserTier.FREE, subscription_active=False, full_access=True
+    )
+    for action in RULES:
+        decision = decide(action, context)
+        assert decision.allowed, action
+        assert decision.reason == ""
+
+
+def test_full_access_is_not_a_tier() -> None:
+    """It short-circuits the decision; it does not pretend to have paid.
+
+    The same account with the flag off is refused exactly as before, which is
+    what makes the grant withdrawable by configuration alone.
+    """
+    without = EntitlementContext(tier=UserTier.FREE, subscription_active=False)
+    refused = decide(EntitlementAction.SOLVE_PLAN, without)
+    assert not refused.allowed
+    assert refused.purchasable_per_race
+
+
+def test_the_course_map_is_gated_and_recon_is_not() -> None:
+    """Choosing a race is free; the survey of it is the work an athlete buys."""
+    free = EntitlementContext(tier=UserTier.FREE, subscription_active=False)
+    assert decide(EntitlementAction.COURSE_RECON, free).allowed
+    assert decide(EntitlementAction.CUTOFF_CALCULATOR, free).allowed
+    assert not decide(EntitlementAction.COURSE_MAP, free).allowed
+
+    season = EntitlementContext(tier=UserTier.SEASON, subscription_active=True)
+    assert decide(EntitlementAction.COURSE_MAP, season).allowed
+
+    bought_this_race = EntitlementContext(
+        tier=UserTier.FREE, subscription_active=False, has_race_purchase=True
+    )
+    assert decide(EntitlementAction.COURSE_MAP, bought_this_race).allowed

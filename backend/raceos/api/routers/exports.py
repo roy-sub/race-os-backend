@@ -18,7 +18,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from raceos.api.deps import CurrentUser, DbSession
+from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.errors import ServiceUnavailable
 from raceos.api.serialise import plan_detail
 from raceos.domain.entitlements import EntitlementAction
@@ -48,27 +48,35 @@ def _download(content: bytes, *, media_type: str, filename: str) -> Response:
     )
 
 
-def _context(session: DbSession, plan_id: UUID, user: CurrentUser) -> export_service.ExportContext:
+def _context(
+    session: DbSession, plan_id: UUID, user: CurrentUser, settings: Config
+) -> export_service.ExportContext:
     plan = plan_service.get_plan(session, plan_id=plan_id, user=user)
     export_service.require_exportable(plan)
     # Exports are part of the race plan the athlete bought, so the entitlement
     # is the captured purchase for this race — which outlives a cancelled
     # subscription. A plan you paid for stays yours.
     billing_service.require(
-        session, user=user, action=EntitlementAction.EXPORT_PLAN, race_id=plan.race_id
+        session,
+        user=user,
+        action=EntitlementAction.EXPORT_PLAN,
+        race_id=plan.race_id,
+        settings=settings,
     )
     return export_service.load_context(session, plan=plan)
 
 
 @router.get("/{plan_id}/export", summary="What this plan can be exported as")
-def list_exports(plan_id: UUID, session: DbSession, user: CurrentUser) -> dict[str, object]:
+def list_exports(
+    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+) -> dict[str, object]:
     """The manifest the download drawer renders.
 
     It also carries the head-unit import instructions, because writing the
     file is only half of the promise — the athlete still has to get it onto
     the device, and RaceOS has no integration that could do it for them.
     """
-    context = _context(session, plan_id, user)
+    context = _context(session, plan_id, user, settings)
     return {
         "plan_id": str(plan_id),
         "plan_version": context.plan.version,
@@ -101,8 +109,10 @@ def _render_pdf(render: Callable[[pdf.PlanRenderData], bytes], data: pdf.PlanRen
     response_class=Response,
     summary="The race card, as a printable A5 page",
 )
-def export_race_card(plan_id: UUID, session: DbSession, user: CurrentUser) -> Response:
-    context = _context(session, plan_id, user)
+def export_race_card(
+    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+) -> Response:
+    context = _context(session, plan_id, user, settings)
     detail = plan_detail(session, context.plan)
     document = _render_pdf(pdf.render_race_card, export_service.build_render_data(context, detail))
     return _download(
@@ -121,8 +131,10 @@ def export_race_card(plan_id: UUID, session: DbSession, user: CurrentUser) -> Re
     response_class=Response,
     summary="Bag manifests, one page per bag",
 )
-def export_bag_manifests(plan_id: UUID, session: DbSession, user: CurrentUser) -> Response:
-    context = _context(session, plan_id, user)
+def export_bag_manifests(
+    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+) -> Response:
+    context = _context(session, plan_id, user, settings)
     detail = plan_detail(session, context.plan)
     document = _render_pdf(
         pdf.render_bag_manifests, export_service.build_render_data(context, detail)
@@ -147,9 +159,10 @@ def export_fit(
     plan_id: UUID,
     session: DbSession,
     user: CurrentUser,
+    settings: Config,
     leg: Annotated[Leg, Query(description="Which leg to export")] = Leg.BIKE,
 ) -> Response:
-    context = _context(session, plan_id, user)
+    context = _context(session, plan_id, user, settings)
     points = export_service.route_points(context.bundle, leg)
     document = files.render_fit_course(
         course_name=f"{context.course.name} {leg.value.lower()}",
@@ -176,9 +189,10 @@ def export_gpx(
     plan_id: UUID,
     session: DbSession,
     user: CurrentUser,
+    settings: Config,
     leg: Annotated[Leg, Query(description="Which leg to export")] = Leg.BIKE,
 ) -> Response:
-    context = _context(session, plan_id, user)
+    context = _context(session, plan_id, user, settings)
     document = files.render_gpx(
         course_name=f"{context.course.name} {leg.value.lower()}",
         points=export_service.route_points(context.bundle, leg),
@@ -200,8 +214,10 @@ def export_gpx(
     response_class=Response,
     summary="Race week as calendar events",
 )
-def export_calendar(plan_id: UUID, session: DbSession, user: CurrentUser) -> Response:
-    context = _context(session, plan_id, user)
+def export_calendar(
+    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+) -> Response:
+    context = _context(session, plan_id, user, settings)
     document = files.render_ics(
         events=export_service.calendar_events(context),
         calendar_name=f"{context.course.name} race week",

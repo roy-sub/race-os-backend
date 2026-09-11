@@ -26,8 +26,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from raceos.db.catalogue import CATALOGUE, SHIPPING_BUNDLE_SLUGS
+from raceos.db.models import Course
 from raceos.db.session import session_scope
-from raceos.ingest.bundle_loader import BundleValidationError, load_bundle_directory
+from raceos.domain.enums import CourseAvailability, CourseVisibility
+from raceos.ingest.bundle_loader import BundleValidationError, load_bundle_file
 from raceos.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +43,21 @@ BUNDLE_DIR = REPO_ROOT / "pipelines" / "course-ingest" / "out" / "bundles"
 
 
 def seed_courses(bundle_dir: Path | None = None) -> int:
-    """Load every generated bundle. Returns how many were loaded."""
+    """Bring the course directory in line with the declared catalogue.
+
+    Three steps, in this order, because each depends on the one before:
+
+    1. Load the bundles named by the catalogue — and only those. Loading the
+       whole directory would put test fixtures on the live site.
+    2. Write the catalogue row for every event, bundled or not, so a
+       coming-soon race is listed honestly rather than missing.
+    3. Retire anything in ``courses`` that the catalogue no longer names.
+       Retired rather than deleted: a course with a solved plan against it
+       cannot be removed without orphaning that plan, so it is made invisible
+       instead and the athlete keeps everything they paid for.
+
+    Returns how many catalogue rows are now present.
+    """
     directory = bundle_dir or BUNDLE_DIR
     if not directory.is_dir():
         logger.warning(
@@ -47,21 +67,88 @@ def seed_courses(bundle_dir: Path | None = None) -> int:
         return 0
 
     with session_scope() as session:
-        results = load_bundle_directory(session, directory)
+        for slug in SHIPPING_BUNDLE_SLUGS:
+            path = directory / f"{slug}.bundle.json"
+            if not path.is_file():
+                logger.warning(
+                    "catalogue names a bundle that is not generated",
+                    extra={"course_slug": slug, "path": str(path)},
+                )
+                continue
+            result = load_bundle_file(session, path)
+            logger.info(
+                "seeded course bundle",
+                extra={
+                    "course_slug": result.slug,
+                    "bundle_version": result.version,
+                    "newly_created": result.created,
+                    "segments": result.segments,
+                    "barriers": result.barriers,
+                    "aid_stations": result.aid_stations,
+                },
+            )
 
-    for result in results:
-        logger.info(
-            "seeded course",
-            extra={
-                "course_slug": result.slug,
-                "bundle_version": result.version,
-                "newly_created": result.created,
-                "segments": result.segments,
-                "barriers": result.barriers,
-                "aid_stations": result.aid_stations,
-            },
-        )
-    return len(results)
+        applied = apply_catalogue(session)
+        retired = retire_uncatalogued(session)
+
+    logger.info(
+        "catalogue applied",
+        extra={"courses": applied, "retired": retired},
+    )
+    return applied
+
+
+def apply_catalogue(session: Session) -> int:
+    """Write every catalogue row, creating the ones with no bundle.
+
+    A bundled course already has its geometry-derived facts from the loader,
+    so only the catalogue's own columns are written over it: availability,
+    visibility and the announced date. An unbundled course is created whole
+    from the manifest — it is a listing, and a listing is all it claims to be.
+    """
+    for entry in CATALOGUE:
+        course = session.scalar(select(Course).where(Course.slug == entry.slug))
+        if course is None:
+            course = Course(slug=entry.slug)
+            session.add(course)
+        if not entry.has_bundle:
+            course.name = entry.name
+            course.place = entry.place
+            course.distance_type = entry.distance_type
+            course.difficulty = entry.difficulty
+            course.timezone = entry.timezone
+            course.lat = entry.lat
+            course.lng = entry.lng
+            course.tone_color = entry.tone_color
+        course.official_event_name = entry.name
+        course.availability = entry.availability
+        course.visibility = entry.visibility
+        course.next_edition_date = entry.event_date
+        course.is_fictional = entry.visibility is CourseVisibility.SHOWCASE
+        course.submitted_by_user_id = None
+    session.flush()
+    return len(CATALOGUE)
+
+
+def retire_uncatalogued(session: Session) -> int:
+    """Hide every course the catalogue does not name.
+
+    Athlete-submitted courses are left alone: they are not part of the
+    official catalogue and were never meant to be.
+    """
+    named = {entry.slug for entry in CATALOGUE}
+    retired = 0
+    for course in session.scalars(select(Course).where(Course.submitted_by_user_id.is_(None))):
+        if course.slug in named:
+            continue
+        if course.visibility is CourseVisibility.RETIRED:
+            continue
+        course.visibility = CourseVisibility.RETIRED
+        course.availability = CourseAvailability.COMING_SOON
+        retired += 1
+        logger.info("retired course not in the catalogue", extra={"course_slug": course.slug})
+    session.flush()
+    return retired
 
 
 def seed_all() -> dict[str, Any]:

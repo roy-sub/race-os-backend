@@ -99,6 +99,12 @@ services:
       - key: INTERNAL_JOB_SECRET
         sync: false
 
+      # Accounts granted every entitlement without a payment. Empty unless
+      # you mean it — see .env.example. It never creates a purchase and never
+      # writes an invoice, so a full-access account stays out of revenue.
+      - key: FULL_ACCESS_EMAILS
+        sync: false
+
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY

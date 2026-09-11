@@ -32,6 +32,13 @@ class EntitlementAction(str, Enum):
     CUTOFF_CALCULATOR = "cutoff_calculator"
     CONDITIONS_HISTORY = "conditions_history"
 
+    # The course map itself — the surveyed geometry, elevation series, named
+    # segments, aid stations and barrier ladder. Distinct from COURSE_RECON,
+    # which is the free evaluation above it: where the race is, how far, how
+    # much climbing and what the tightest cut-off is. Choosing a race is free;
+    # the survey of it is the work an athlete buys.
+    COURSE_MAP = "course_map"
+
     # The plan — bought per race, or unlimited on a season or coach tier.
     SOLVE_PLAN = "solve_plan"
     EXPORT_PLAN = "export_plan"
@@ -85,6 +92,7 @@ RULES: dict[EntitlementAction, Rule] = {
     EntitlementAction.COURSE_RECON: Rule(Grant.EVERYONE),
     EntitlementAction.CUTOFF_CALCULATOR: Rule(Grant.EVERYONE),
     EntitlementAction.CONDITIONS_HISTORY: Rule(Grant.EVERYONE),
+    EntitlementAction.COURSE_MAP: Rule(Grant.RACE_PURCHASE_OR_TIER, UNLIMITED_PLAN_TIERS),
     EntitlementAction.SOLVE_PLAN: Rule(Grant.RACE_PAID_OR_PAYING_OR_TIER, UNLIMITED_PLAN_TIERS),
     EntitlementAction.EXPORT_PLAN: Rule(Grant.RACE_PURCHASE_OR_TIER, UNLIMITED_PLAN_TIERS),
     EntitlementAction.DRIFT_RESOLVE: Rule(Grant.RACE_PURCHASE_OR_TIER, UNLIMITED_PLAN_TIERS),
@@ -122,6 +130,14 @@ class EntitlementContext:
     #: solve and nothing else — an authorization is not a payment, so it must
     #: not unlock exports or Race Mode on its own.
     has_open_authorization: bool = False
+    #: A configured full-access account: the developer and demo path.
+    #:
+    #: It grants every action without a purchase and without a subscription.
+    #: It is a *fact gathered by the service layer* from configuration, never
+    #: something a request can assert, and it deliberately does not pretend to
+    #: be a tier — a full-access account still has whatever tier it has, so
+    #: nothing downstream mistakes it for revenue.
+    full_access: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,6 +164,12 @@ _TIER_LABEL: dict[UserTier, str] = {
 def decide(action: EntitlementAction, context: EntitlementContext) -> Decision:
     """Whether *context* may perform *action*."""
     rule = RULES[action]
+
+    # Checked before the rules rather than inside each branch: a full-access
+    # account is allowed everything, and expressing that once means a rule
+    # added later cannot forget about it.
+    if context.full_access:
+        return Decision(allowed=True, action=action)
 
     if rule.grant is Grant.EVERYONE:
         return Decision(allowed=True, action=action)

@@ -1,0 +1,54 @@
+# IRONMAN 70.3 Italy Emilia-Romagna -- Cervia, on the Adriatic.
+#
+# The first real, licensed-venue course in the shipping set. Everything before
+# this one is an invented race on real roads; this one is an actual event, so
+# the start point is the actual race village on the Cervia seafront and the
+# character matches the real course: dead-flat coastal plain, a single bike lap
+# out through the Romagna farmland, a two-lap seafront run.
+course_id: italy-emilia-romagna-703
+slug: italy-emilia-romagna-703
+name: IRONMAN 70.3 Italy Emilia-Romagna
+place: Cervia, Italy
+country: IT
+timezone: Europe/Rome
+distance_type: "70.3"
+difficulty: APPROACHABLE
+character: flat_coastal
+tone_color: "#1d6f7a"
+
+# Cervia race village, Lungomare Grazia Deledda.
+start:
+  lat: 44.2646
+  lng: 12.3556
+
+swim:
+  water_kind: sea
+  water_name: Adriatic Sea
+  # The Adriatic lies east-north-east of the Cervia shoreline.
+  bearing_deg: 75
+
+bike:
+  laps: 1
+  bearing_offset_deg: 250
+  character: flat_coastal
+
+run:
+  laps: 2
+  bearing_offset_deg: 330
+  character: flat_coastal
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.0
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Flat Adriatic swim off the
+  Cervia beach, one-lap coastal-plain bike leg, two-lap seafront run.
+notes: >-
+  Real venue, real roads, real terrain. The route is routed rather than copied
+  from the organiser's own course file, so it is ESTIMATED until an official
+  file is licensed -- the provenance column says so on every screen.
+
+status: ready

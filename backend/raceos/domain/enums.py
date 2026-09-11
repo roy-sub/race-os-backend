@@ -143,6 +143,64 @@ class Provenance(_StrEnum):
     ESTIMATED = "ESTIMATED"
 
 
+class CourseAvailability(_StrEnum):
+    """Whether the directory row can actually be planned for yet.
+
+    A course is listed long before it is planable. Announcing the season and
+    then hiding fourteen of its fifteen events would be worse for an athlete
+    than saying plainly which one is ready — so a ``COMING_SOON`` row is real,
+    visible and honest, and it simply cannot be entered.
+    """
+
+    #: A published bundle exists. The race can be entered and planned.
+    AVAILABLE = "available"
+    #: Announced, dated, listed — no course data yet. Not enterable.
+    COMING_SOON = "coming_soon"
+
+
+class CourseVisibility(_StrEnum):
+    """Who a course is listed for.
+
+    The two values are not a permission model — nothing sensitive hides behind
+    them. They separate the *marketing* course, which exists to show a signed
+    out visitor what a race map looks like, from the *catalogue*, which is the
+    set of real events an athlete can plan for. Showing both to a signed-in
+    athlete would put an illustrative, deliberately out-of-scale map next to
+    the surveyed ones and invite them to be compared.
+    """
+
+    #: In the athlete-facing catalogue. Listed to everyone.
+    CATALOGUE = "catalogue"
+    #: The signed-out showcase only. Never listed to an authenticated user.
+    SHOWCASE = "showcase"
+    #: Withdrawn from the directory, and kept only so that a plan already
+    #: solved against it still has something to name. Listed to nobody.
+    #: Courses are retired rather than deleted because deleting one would
+    #: orphan every plan an athlete already paid for.
+    RETIRED = "retired"
+
+
+class SubmissionStatus(_StrEnum):
+    """Where an athlete-submitted course has got to.
+
+    ``FAILED`` is a resting state, not an error the athlete has to clear: the
+    problems are attached to the row, the files they already uploaded are
+    still there, and re-submitting after replacing one file is the whole
+    recovery path.
+    """
+
+    #: Created, files not all uploaded yet.
+    DRAFT = "draft"
+    #: Complete and waiting to be built.
+    QUEUED = "queued"
+    #: Being built right now.
+    PROCESSING = "processing"
+    #: Built, loaded, and usable as a course.
+    READY = "ready"
+    #: Rejected. ``problems`` says why, in the athlete's terms.
+    FAILED = "failed"
+
+
 class BundleStatus(_StrEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
