@@ -672,6 +672,10 @@ def ops_overview(session: Session, *, settings: Settings) -> dict[str, Any]:
             for row in service_health(session)
         ],
         "phrasing_boundary": _phrasing_boundary(),
+        # Which model is actually live. "Off" and "on, and every call failing"
+        # look identical from outside — both return the deterministic text —
+        # so an operator needs to be able to tell them apart.
+        "phrasing_provider": _phrasing_provider(settings),
     }
 
 
@@ -679,3 +683,9 @@ def _phrasing_boundary() -> dict[str, Any]:
     from raceos.services import phrasing_service
 
     return phrasing_service.describe_boundary()
+
+
+def _phrasing_provider(settings: Settings) -> dict[str, Any]:
+    from raceos.services import phrasing_service
+
+    return phrasing_service.describe_provider(settings)

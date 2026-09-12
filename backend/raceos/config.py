@@ -262,6 +262,11 @@ class Settings(BaseSettings):
     phrasing_timeout_ms: int = Field(default=2_500, ge=100, le=60_000)
     phrasing_model_id: str = ""
     phrasing_model_api_key: SecretStr = SecretStr("")
+    #: Any OpenAI-compatible ``/chat/completions`` endpoint. A base URL rather
+    #: than a provider name, because the wire format is the only thing the
+    #: adapter depends on and hardcoding one vendor's host would mean a code
+    #: change to move.
+    phrasing_base_url: str = "https://api.openai.com/v1"
 
     # ------------------------------------------------------------------
     # Email — subsystem built, transport no-op in V1
