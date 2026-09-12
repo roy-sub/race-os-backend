@@ -158,3 +158,42 @@ class ShareLinkOpen(CreatedOnly):
     share_link: Mapped[ShareLink] = relationship(back_populates="opens")
 
     __table_args__ = (Index("ix_share_link_opens_share_link_id", "share_link_id"),)
+
+
+class CoachBranding(Entity):
+    """A coach's logo and accent, for the plans they hand to their athletes.
+
+    **One row per coach, and it is not a theme.** The accent replaces one
+    colour and the logo sits in one corner; the layout, the typography and
+    every safeguard in the printed artefact stay exactly as they are. A
+    white-label export that let a coach restyle the document would let them
+    produce something that looks like a race card and is not one — and the
+    reason every gate carries a glyph as well as a colour is that the card has
+    to survive a monochrome print, which a chosen palette could quietly break.
+
+    The logo lives in object storage; only its key is here. Images are
+    megabytes and a database is not a file system.
+    """
+
+    __tablename__ = "coach_branding"
+
+    coach_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    #: How the coach wants to be named on the artefact. Their account name is
+    #: a person; a practice usually has a different one.
+    display_name: Mapped[str | None] = mapped_column(Text)
+    #: `#RRGGBB`. Validated on write, and contrast-checked against the paper
+    #: colour — a pale accent on cream is unreadable in print, and the athlete
+    #: holding it cannot fix that.
+    accent_hex: Mapped[str | None] = mapped_column(String(7))
+    logo_storage_key: Mapped[str | None] = mapped_column(Text)
+    logo_content_type: Mapped[str | None] = mapped_column(Text)
+    #: A footer line: a website, a phone number, whatever the coach wants an
+    #: athlete looking at this in a transition tent to be able to read.
+    footer_note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (Index("ix_coach_branding_coach_id", "coach_id"),)

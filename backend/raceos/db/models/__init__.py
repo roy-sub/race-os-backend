@@ -15,7 +15,13 @@ from raceos.db.models.billing import (
     Refund,
     Subscription,
 )
-from raceos.db.models.coach import CoachAthleteLink, CoachNote, ShareLink, ShareLinkOpen
+from raceos.db.models.coach import (
+    CoachAthleteLink,
+    CoachBranding,
+    CoachNote,
+    ShareLink,
+    ShareLinkOpen,
+)
 from raceos.db.models.course import (
     Course,
     CourseBundle,
@@ -87,6 +93,7 @@ __all__ = [
     "Base",
     "CacheEntry",
     "CoachAthleteLink",
+    "CoachBranding",
     "CoachNote",
     "Constraint",
     "ConstraintHistory",
