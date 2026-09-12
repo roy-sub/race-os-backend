@@ -209,6 +209,23 @@ class PlanSummary(BaseModel):
     assumed_fields: list[str] = Field(default_factory=list)
 
 
+class AdvisoryOut(BaseModel):
+    """Where this plan sits outside the evidence behind its own model.
+
+    Distinct from ``assumed_fields``, which is about inputs the athlete did not
+    supply. Every input can be present and the answer still rest on ground the
+    data does not cover — a heat decrement applied over a leg far longer than
+    the hour it was measured over, a curve held flat above its top knot.
+
+    Says which numbers are soft, and never by how much: there is no correction
+    term to quote, and quoting one would be inventing it.
+    """
+
+    key: str
+    tag: str
+    text: str
+
+
 class PlanDetail(PlanSummary):
     #: Race identity, denormalised onto the plan.
     #:
@@ -238,6 +255,9 @@ class PlanDetail(PlanSummary):
     #: ageing FTP is still the right plan to hand the athlete; it just needs
     #: the caveat attached. Empty on a plan whose inputs are all current.
     warnings: list[ResponseWarningOut] = Field(default_factory=list)
+    #: Model-range caveats from the solve that produced these numbers. Empty
+    #: for a plan solved wholly inside the data behind its curves.
+    advisories: list[AdvisoryOut] = Field(default_factory=list)
 
 
 class SolveJobOut(BaseModel):

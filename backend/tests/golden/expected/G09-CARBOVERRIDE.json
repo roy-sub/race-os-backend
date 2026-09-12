@@ -2,6 +2,9 @@
   "case_id": "G09-CARBOVERRIDE",
   "course_id": "C-TRAM",
   "output": {
+    "advisories": [
+      "model:bike_heat_duration"
+    ],
     "aid_actions": [
       {
         "action_text": "Take 95 g carb, 935 ml fluid, 898 mg sodium per hour.",

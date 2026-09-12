@@ -112,6 +112,19 @@ class Plan(Entity):
     assumed_fields: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default=text("'{}'")
     )
+    #: `model:` keys naming where this plan sits **outside its own evidence**.
+    #:
+    #: Distinct from ``assumed_fields``, which records inputs the athlete did
+    #: not supply. This records the model's own range: every input was present
+    #: and the answer still rests on ground the data does not cover — a heat
+    #: decrement applied over a leg far longer than the hour it was measured
+    #: over, a curve held flat above its top knot rather than extrapolated.
+    #:
+    #: Persisted with the plan, not recomputed on read, because it describes
+    #: the solve that produced these numbers rather than the conditions today.
+    advisories: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
 
     readiness_fraction: Mapped[float | None] = mapped_column(Numeric)
     readiness_note: Mapped[str | None] = mapped_column(Text)

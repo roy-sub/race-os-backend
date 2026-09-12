@@ -523,6 +523,7 @@ def _persist(
     solved.worst_margin_minutes = output.worst_margin_minutes
     solved.binding_constraint_key = output.binding_constraint_key
     solved.assumed_fields = list(output.assumed_fields)
+    solved.advisories = list(output.advisories)
     solved.constraints_snapshot = {
         **(solved.constraints_snapshot or {}),
         "constraints": [

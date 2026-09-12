@@ -2,6 +2,7 @@
   "case_id": "G12-MOUNTAIN",
   "course_id": "C-ALTA",
   "output": {
+    "advisories": [],
     "aid_actions": [
       {
         "action_text": "Take 90 g carb, 1000 ml fluid, 1400 mg sodium per hour.",

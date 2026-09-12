@@ -2,6 +2,9 @@
   "case_id": "G10-NIGHT",
   "course_id": "C-TRAM",
   "output": {
+    "advisories": [
+      "model:bike_heat_duration"
+    ],
     "aid_actions": [
       {
         "action_text": "Take 50 g carb, 765 ml fluid, 571 mg sodium per hour.",

@@ -71,7 +71,7 @@ def test_season_history_is_behind_the_tier_it_is_sold_with(
 ) -> None:
     response = api.get("/api/v1/season-history", headers=signed_up["headers"])
     assert response.status_code == 402
-    assert "season" in [t for t in response.json()["error"]["details"]["required_tiers"]]
+    assert "season" in response.json()["error"]["details"]["required_tiers"]
 
 
 def test_a_subscriber_sees_their_constraints_as_a_series(
@@ -108,7 +108,10 @@ def test_a_value_set_once_still_has_a_series(api: TestClient, signed_up, api_db,
     api.put("/api/v1/constraints/weight", headers=headers, json={"value": 75})
     _subscribe(api_db, "elena.marsh@example.com")
 
-    tracks = {t["key"]: t for t in api.get("/api/v1/season-history", headers=headers).json()["constraints"]}
+    tracks = {
+        t["key"]: t
+        for t in api.get("/api/v1/season-history", headers=headers).json()["constraints"]
+    }
     assert len(tracks["weight"]["points"]) == 1
     # One reading has not moved. It has only been taken.
     assert tracks["weight"]["change"] is None
@@ -166,7 +169,7 @@ def test_nobody_reads_another_athletes_season(api: TestClient, signed_up, api_db
 
 
 def test_the_impact_is_readable_before_the_decision(api: TestClient, signed_up) -> None:
-    """"4 plans and 2 invoices" is a different decision from "0 and 0"."""
+    """ "4 plans and 2 invoices" is a different decision from "0 and 0"."""
     response = api.get("/api/v1/auth/me/erasure-impact", headers=signed_up["headers"])
     assert response.status_code == 200, response.text
     body = response.json()
@@ -191,9 +194,7 @@ def test_erasure_needs_the_words_typed_back(api: TestClient, signed_up) -> None:
     assert response.json()["error"]["field"] == "confirmation"
 
 
-def test_erasing_scrubs_the_person_and_keeps_the_row(
-    api: TestClient, signed_up, api_db
-) -> None:
+def test_erasing_scrubs_the_person_and_keeps_the_row(api: TestClient, signed_up, api_db) -> None:
     """A tombstone, not a hard delete. Invoices are financial records, and the
     audit log has to stay referentially intact."""
     user_id = api_db.scalar(select(User).where(User.email == "elena.marsh@example.com")).id
@@ -218,9 +219,7 @@ def test_erasing_scrubs_the_person_and_keeps_the_row(
     assert user.email.endswith("@erased.invalid")
 
 
-def test_the_token_in_another_tab_dies_with_the_account(
-    api: TestClient, signed_up
-) -> None:
+def test_the_token_in_another_tab_dies_with_the_account(api: TestClient, signed_up) -> None:
     headers = signed_up["headers"]
     assert api.get("/api/v1/auth/me", headers=headers).status_code == 200
 
@@ -293,6 +292,8 @@ def test_an_erased_account_cannot_sign_back_in(api: TestClient, signed_up) -> No
 
 def test_erasure_rejects_an_absent_token(api: TestClient) -> None:
     assert (
-        api.request("DELETE", "/api/v1/auth/me", json={"confirmation": "DELETE MY ACCOUNT"}).status_code
+        api.request(
+            "DELETE", "/api/v1/auth/me", json={"confirmation": "DELETE MY ACCOUNT"}
+        ).status_code
         == 401
     )

@@ -2,6 +2,9 @@
   "case_id": "G06-TIGHT",
   "course_id": "C-TRAM",
   "output": {
+    "advisories": [
+      "model:bike_heat_duration"
+    ],
     "aid_actions": [
       {
         "action_text": "Take 55 g carb, 850 ml fluid, 725 mg sodium per hour.",

@@ -59,7 +59,7 @@ def test_the_help_library_is_readable_without_signing_in(api: TestClient) -> Non
 
 
 def test_articles_come_back_in_reading_order_not_alphabetical(api: TestClient) -> None:
-    """"Getting started" before "Billing" is the whole point of having an order."""
+    """ "Getting started" before "Billing" is the whole point of having an order."""
     categories = [row["category"] for row in api.get("/api/v1/help").json()]
     published = api.get("/api/v1/help/categories").json()
 
@@ -154,9 +154,7 @@ def test_a_signed_in_athlete_finds_their_own_race_and_plan(
         },
     )
     assert race.status_code in (200, 201), race.text
-    created = api.post(
-        "/api/v1/plans", headers=headers, json={"race_id": race.json()["id"]}
-    )
+    created = api.post("/api/v1/plans", headers=headers, json={"race_id": race.json()["id"]})
     assert created.status_code == 201, created.text
 
     rows = api.get("/api/v1/search", params={"q": "tramuntana"}, headers=headers).json()

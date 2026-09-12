@@ -2,6 +2,7 @@
   "case_id": "G04-SPRINT",
   "course_id": "C-SPR",
   "output": {
+    "advisories": [],
     "aid_actions": [
       {
         "action_text": "Take 30 g carb, 1000 ml fluid, 1500 mg sodium per hour.",

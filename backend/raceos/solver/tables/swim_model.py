@@ -14,6 +14,8 @@ not slower.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import date
 from typing import Final
 
 from raceos.domain.enums import AthleteLevel
@@ -57,14 +59,84 @@ K_SWIM_DUR: Final[float] = 0.0012
 #: confidence. The 400 m figure is a max-effort short-distance result.
 WETSUIT_FACTOR: Final[float] = 0.955
 
-#: Ironman competition rules. High confidence — but these are **rules, not
-#: physics**, and they change: ⚠ VERIFY (§E-12) against the current season's
-#: rules annually. The thresholds are genuinely discontinuous (24.5 °C and
-#: 24.6 °C produce different equipment, hence a ~4.5% pace step); that
-#: discontinuity is in the rules, and smoothing it would be wrong.
-WETSUIT_MANDATORY_BELOW_C: Final[float] = 16.0
-WETSUIT_LEGAL_MAX_C: Final[float] = 24.5
-WETSUIT_NON_AWARD_MAX_C: Final[float] = 28.77
+
+@dataclass(frozen=True)
+class WetsuitRuleset:
+    """One federation's wetsuit thresholds, for one season.
+
+    **These are rules, not physics.** Every other constant in this package is a
+    claim about how a body behaves and is wrong only if the science is wrong.
+    These are wrong the moment a federation publishes a new competition rulebook
+    — which happens annually, and which no amount of back-testing will detect.
+
+    So they carry a ``review_by`` date, and a test fails once it passes. That is
+    the update mechanism: not a note asking someone to remember, but a red build
+    that names the ruleset, the page it came from and what to do about it.
+    """
+
+    #: The body that publishes these rules.
+    federation: str
+    #: The competition season the values were read for.
+    season: int
+    #: When the build starts failing. The point is that it *should* fail: a
+    #: season has turned over and nobody has confirmed the numbers.
+    review_by: date
+    #: Where to go to confirm them. Named so the check is twenty minutes, not
+    #: an afternoon of searching.
+    source: str
+
+    #: Below this, a wetsuit is required.
+    mandatory_below_c: float
+    #: Up to and including this, a wetsuit is permitted and award-eligible.
+    legal_max_c: float
+    #: Above ``legal_max_c`` and up to this, permitted but not award-eligible.
+    non_award_max_c: float
+
+
+#: Every ruleset this build knows. Adding a federation is an entry here and
+#: nothing else — the solver reads whichever one the caller selects.
+#:
+#: Only one is populated, deliberately. World Triathlon publishes a different
+#: table, keyed by swim distance as well as temperature, and the numbers are
+#: not in front of me. Transcribing them from memory would put a figure in a
+#: rulebook table that no rulebook supports, which is exactly the failure this
+#: structure exists to prevent. The shape is ready for it; the values wait for
+#: someone with the document open.
+WETSUIT_RULESETS: Final[dict[str, WetsuitRuleset]] = {
+    "ironman": WetsuitRuleset(
+        federation="Ironman",
+        season=2026,
+        review_by=date(2027, 2, 1),
+        source="Ironman Competition Rules, Swim section, current season PDF",
+        # The thresholds are genuinely discontinuous — 24.5 °C and 24.6 °C
+        # produce different equipment, hence a ~4.5% pace step. That
+        # discontinuity is in the rules, and smoothing it would be wrong.
+        mandatory_below_c=16.0,
+        legal_max_c=24.5,
+        non_award_max_c=28.77,
+    ),
+}
+
+#: Used when a course does not name one. Ironman, because every course in the
+#: catalogue is an Ironman-family event.
+DEFAULT_WETSUIT_RULESET: Final[str] = "ironman"
+
+
+def wetsuit_ruleset(name: str | None = None) -> WetsuitRuleset:
+    """The named ruleset, or the default.
+
+    An unknown name falls back rather than raising: a course bundle carrying a
+    federation this build has not been taught about should still solve, under
+    rules that are stated, rather than refuse to produce a plan.
+    """
+    return WETSUIT_RULESETS.get(name or DEFAULT_WETSUIT_RULESET, WETSUIT_RULESETS["ironman"])
+
+
+#: Kept as module constants so existing call sites and tests read unchanged.
+#: They are the default ruleset's values, not a second source of truth.
+WETSUIT_MANDATORY_BELOW_C: Final[float] = WETSUIT_RULESETS["ironman"].mandatory_below_c
+WETSUIT_LEGAL_MAX_C: Final[float] = WETSUIT_RULESETS["ironman"].legal_max_c
+WETSUIT_NON_AWARD_MAX_C: Final[float] = WETSUIT_RULESETS["ironman"].non_award_max_c
 
 # ---------------------------------------------------------------------------
 # Open-water overhead (§4.4.3)

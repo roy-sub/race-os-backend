@@ -594,3 +594,80 @@ def test_an_unsolved_draft_has_no_transitions(ready_athlete, api: TestClient) ->
     assert plan["t1_minutes"] is None
     assert plan["t2_minutes"] is None
     assert plan["t1_label"] is None
+
+
+# ---------------------------------------------------------------------------
+# Model advisories
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_hot_long_bike_says_its_heat_number_is_soft(ready_athlete, api: TestClient) -> None:
+    """D-1, surfaced.
+
+    The bike heat curve is measured over a 40 km time trial — about an hour —
+    and every leg we sell is far longer, with strain accumulating over exactly
+    that span. There is no duration term and no basis for inventing one, so the
+    number does not change. What changes is that the athlete is told.
+    """
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    # A forecast hot enough for the curve to apply a decrement at all.
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 31, "humidity": 55, "wind_speed_ms": 3, "conditions": "clear"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+
+    keys = {row["key"] for row in solved.json()["advisories"]}
+    assert "model:bike_heat_duration" in keys, solved.json()["advisories"]
+
+    # Prose, not a bare key: `model:bike_heat_clamp` on a race card looks like
+    # a bug to the athlete and tells them nothing either way.
+    for row in solved.json()["advisories"]:
+        assert row["tag"]
+        assert len(row["text"]) > 40
+        assert "model:" not in row["text"]
+
+
+@needs_bundle
+def test_a_cool_plan_carries_no_advisory(ready_athlete, api: TestClient) -> None:
+    """Empty, so an advisory block only ever appears when there is one."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 12, "humidity": 60, "wind_speed_ms": 2, "conditions": "cloudy"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["advisories"] == []
+
+
+@needs_bundle
+def test_an_advisory_survives_being_read_back(ready_athlete, api: TestClient) -> None:
+    """Persisted with the plan, not recomputed on read: it describes the solve
+    that produced these numbers, not the weather today."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 31, "humidity": 55, "wind_speed_ms": 3, "conditions": "clear"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    active_id = solved.json()["id"]
+
+    reread = api.get(f"/api/v1/plans/{active_id}", headers=headers).json()
+    assert {row["key"] for row in reread["advisories"]} == {
+        row["key"] for row in solved.json()["advisories"]
+    }
