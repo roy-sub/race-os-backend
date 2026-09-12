@@ -8,7 +8,7 @@ list is how a screen ends up showing two different next races.
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -26,12 +26,25 @@ from raceos.api.schemas.dashboard import (
     RaceCardOut,
 )
 from raceos.api.schemas.plan import format_hm
+from raceos.api.schemas.season import (
+    ConstraintTrackOut,
+    SeasonHistoryOut,
+    SeasonOut,
+    SeasonRaceOut,
+)
+from raceos.domain.entitlements import EntitlementAction
 from raceos.domain.enums import (
     CRITICAL_NOTIFICATION_TYPES,
     NotificationType,
     PlanStatus,
 )
-from raceos.services import dashboard_service, notification_service, push_service
+from raceos.services import (
+    billing_service,
+    dashboard_service,
+    notification_service,
+    push_service,
+    season_service,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 
@@ -64,6 +77,53 @@ def get_my_plans(session: DbSession, user: CurrentUser) -> MyPlansOut:
         active=[card for card in upcoming if card.plan_status not in unsolved],
         draft=[card for card in upcoming if card.plan_status in unsolved],
         past=past,
+    )
+
+
+@router.get("/season-history", summary="A season at a glance, and constraint drift across it")
+def get_season_history(
+    session: DbSession,
+    user: CurrentUser,
+    settings: Config,
+    since: Annotated[
+        date | None,
+        Query(description="Only constraint changes from this date onward"),
+    ] = None,
+) -> SeasonHistoryOut:
+    """The Season Pass view. **Gated on the tier that is sold with it.**
+
+    Two things, and the second is the one that did not exist anywhere:
+    constraint history was per key (`GET /constraints/{key}/history`), which
+    answers "how has my FTP moved?" and cannot answer "what changed about me
+    last year?" — the question the tier is sold on. Assembling that from eight
+    separate requests is something a client should not have to do.
+
+    Seasons are grouped from October rather than January, so a race in the new
+    year sits with the autumn that prepared it.
+    """
+    billing_service.require(
+        session, user=user, action=EntitlementAction.SEASON_HISTORY, settings=settings
+    )
+
+    out_seasons: list[SeasonOut] = []
+    for summary in season_service.seasons(session, user=user):
+        races: list[SeasonRaceOut] = []
+        for race in summary.races:
+            row = SeasonRaceOut.model_validate(race)
+            row.goal_label = format_hm(race.goal_minutes)
+            row.projected_label = format_hm(race.projected_minutes)
+            row.actual_label = format_hm(race.actual_minutes)
+            races.append(row)
+        out = SeasonOut.model_validate(summary)
+        out.races = races
+        out_seasons.append(out)
+
+    return SeasonHistoryOut(
+        seasons=out_seasons,
+        constraints=[
+            ConstraintTrackOut.model_validate(track)
+            for track in season_service.constraint_tracks(session, user=user, since=since)
+        ],
     )
 
 
