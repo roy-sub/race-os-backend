@@ -25,12 +25,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from raceos.api.errors import Forbidden, InvalidInput, NotFound, Unauthenticated
+from raceos.api.errors import (
+    Conflict,
+    Forbidden,
+    ForbiddenStructural,
+    InvalidInput,
+    NotFound,
+    Unauthenticated,
+)
 from raceos.config import Settings
 from raceos.db.models import (
     EmailVerificationToken,
@@ -528,3 +536,148 @@ def purge_expired(session: Session, *, settings: Settings) -> dict[str, int]:
         "sessions": int(sessions or 0),
         "items_processed": int(verification or 0) + int(resets or 0) + int(sessions or 0),
     }
+
+
+# ---------------------------------------------------------------------------
+# Erasure
+# ---------------------------------------------------------------------------
+
+
+#: What an athlete keeps, is charged for, and cannot delete by deleting
+#: themselves. Returned before erasure so the confirmation names real numbers
+#: from this account rather than a generic warning.
+@dataclass(frozen=True)
+class ErasureImpact:
+    plans: int
+    races: int
+    invoices: int
+    #: A live agreement has to be cancelled first. Erasing the account would
+    #: leave a subscription billing a customer who no longer exists.
+    active_subscription: bool
+    coach_links: int
+
+
+def erasure_impact(session: Session, *, user: User) -> ErasureImpact:
+    """What deleting this account would actually destroy."""
+    from raceos.db.models import CoachAthleteLink, Invoice, Plan, Race, Subscription
+    from raceos.domain.enums import SubscriptionStatus
+
+    def count(model: Any, *where: Any) -> int:
+        return int(session.scalar(select(func.count()).select_from(model).where(*where)) or 0)
+
+    return ErasureImpact(
+        plans=count(Plan, Plan.user_id == user.id),
+        races=count(Race, Race.user_id == user.id),
+        invoices=count(Invoice, Invoice.user_id == user.id),
+        active_subscription=bool(
+            session.scalar(
+                select(Subscription).where(
+                    Subscription.user_id == user.id,
+                    Subscription.status == SubscriptionStatus.ACTIVE,
+                )
+            )
+        ),
+        coach_links=count(
+            CoachAthleteLink,
+            (CoachAthleteLink.athlete_id == user.id) | (CoachAthleteLink.coach_id == user.id),
+        ),
+    )
+
+
+#: The exact words the caller has to send back. A typed confirmation rather
+#: than a boolean, because a boolean can be sent by a mis-wired client and this
+#: cannot be undone.
+ERASURE_CONFIRMATION = "DELETE MY ACCOUNT"
+
+
+def erase_account(
+    session: Session, *, user: User, actor: User, confirmation: str, reason: str | None = None
+) -> ErasureImpact:
+    """GDPR erasure. **The row survives as a tombstone; the PII does not.**
+
+    Not a hard delete, and the difference is not a shortcut. Invoices are
+    financial records with statutory retention, plans a coach built are that
+    coach's work too, and the audit log has to stay referentially intact — a
+    `DELETE FROM users` would take all three with it or fail on the foreign
+    keys that exist to stop it.
+
+    So every field that identifies a person is scrubbed, the account is marked
+    ERASED, and every session is revoked. What is left is a row with an id, a
+    state and a timestamp: enough for an invoice to point somewhere, and not
+    enough to say who it was.
+
+    A live subscription is refused rather than silently cancelled. Cancelling
+    someone's billing as a side effect of a different request is not something
+    to infer — and the athlete may want the refund conversation first.
+    """
+    if actor.id != user.id:
+        raise ForbiddenStructural(
+            "An account can only be erased by the person who holds it. There is "
+            "no administrative path to this, deliberately."
+        )
+    if user.account_state is AccountState.ERASED:
+        raise Conflict("This account has already been erased.")
+    if confirmation != ERASURE_CONFIRMATION:
+        raise InvalidInput(
+            f"Type {ERASURE_CONFIRMATION!r} to confirm. This cannot be undone.",
+            field="confirmation",
+        )
+
+    impact = erasure_impact(session, user=user)
+    if impact.active_subscription:
+        raise Conflict(
+            "Cancel your subscription before deleting your account. We will not "
+            "cancel someone's billing as a side effect of a different request."
+        )
+
+    from raceos.db.models import AuditLog
+
+    # Written before the scrub, so the log records which account this was.
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="account.erase",
+            entity_type="user",
+            entity_id=user.id,
+            before={"account_state": user.account_state.value, "email_domain": _email_domain(user)},
+            after={
+                "account_state": AccountState.ERASED.value,
+                "plans": impact.plans,
+                "races": impact.races,
+                "invoices": impact.invoices,
+                "reason": (reason or "")[:500],
+            },
+        )
+    )
+
+    # A tombstone email: unique (the column is), obviously not a real address,
+    # and carrying nothing about who it was. Reusing the id keeps it unique
+    # without a second lookup.
+    user.email = f"erased+{user.id}@erased.invalid"
+    user.password_hash = None
+    user.name = None
+    user.date_of_birth = None
+    user.country = None
+    user.emergency_contact_name = None
+    user.emergency_contact_phone = None
+    user.avatar_url = None
+    user.account_state = AccountState.ERASED
+    user.email_verified_at = None
+    # Every token issued before now stops verifying, so an access token still
+    # in a tab dies with the account rather than outliving it.
+    user.sessions_invalidated_before = _now()
+    _revoke_all_sessions(session, user.id)
+    session.flush()
+
+    logger.info(
+        "account.erased",
+        extra={"user_id": str(user.id), "plans": impact.plans, "invoices": impact.invoices},
+    )
+    return impact
+
+
+def _email_domain(user: User) -> str:
+    """The domain only. Kept on the audit row so an erasure can be matched to a
+    support conversation without storing the address it erased."""
+    _, _, domain = user.email.partition("@")
+    return domain

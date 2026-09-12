@@ -66,6 +66,8 @@ MODEL_LIMIT_KEYS: Final[frozenset[str]] = frozenset(
     {
         "model:acsm_sodium_floor",
         "model:arm_cooler_threshold",
+        "model:bike_heat_clamp",
+        "model:bike_heat_duration",
         "model:caffeine_dose_per_kg",
         "model:carb_duration_target",
         "model:carb_hard_max",

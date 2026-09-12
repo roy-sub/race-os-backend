@@ -169,3 +169,65 @@ class Page(BaseModel):
 
     data: list[Any]
     meta: dict[str, Any]
+
+
+class ConditionsObservationOut(BaseModel):
+    """One past edition's race-morning weather, as the archive recorded it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    observed_on: date
+    observed_hour: int
+    air_temp_c: float
+    humidity_pct: float
+    wind_speed_ms: float
+    wind_dir_deg: float | None = None
+    precipitation_mm: float | None = None
+    cloud_cover_pct: float | None = None
+    #: Null wherever the marine archive does not cover this swim — a lake, an
+    #: inland reservoir. Not estimated from air temperature.
+    water_temp_c: float | None = None
+
+
+class ConditionsSummaryOut(BaseModel):
+    """Medians, and the count they rest on.
+
+    The count travels with every figure deliberately: a median of two years is
+    a different claim from a median of ten, and a panel showing the number
+    without it makes them look the same.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    observations: int
+    median_air_temp_c: float | None = None
+    median_humidity_pct: float | None = None
+    median_wind_speed_ms: float | None = None
+    warmest_air_temp_c: float | None = None
+    coolest_air_temp_c: float | None = None
+    water_observations: int = 0
+    median_water_temp_c: float | None = None
+    #: Fraction of observed years whose water would have been wetsuit-legal.
+    #: Null when no year has a water temperature — never inferred from the air.
+    wetsuit_legal_fraction: float | None = None
+    wet_start_fraction: float | None = None
+
+
+class ConditionsHistoryOut(BaseModel):
+    """What race day has actually been like here.
+
+    **There is no finish-time distribution.** It needs real results, which this
+    system does not have and cannot obtain, so the field is absent rather than
+    drawn — `finish_times_available` says so in as many words, so a client does
+    not have to infer it from a missing key.
+    """
+
+    course_slug: str
+    course_name: str
+    summary: ConditionsSummaryOut
+    observations: list[ConditionsObservationOut] = Field(default_factory=list)
+    finish_times_available: bool = False
+    #: Why there is nothing, when there is nothing. One of
+    #: ``no_edition_date`` (nothing to anchor past years to) or
+    #: ``not_collected_yet``.
+    empty_reason: str | None = None

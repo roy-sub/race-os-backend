@@ -34,6 +34,7 @@ from raceos.domain.enums import (
     BundleStatus,
     CourseAvailability,
     CourseVisibility,
+    CurationStatus,
     DistanceType,
 )
 
@@ -108,13 +109,18 @@ def visible_to(course: Course, viewer: User | None) -> bool:
       account, a stylised illustration sitting next to surveyed courses would
       invite the two to be compared as though they were the same kind of
       thing.
-    * A course an athlete submitted themselves belongs to that athlete.
+    * A course an athlete submitted themselves belongs to that athlete,
+      until a reviewer publishes it into the shared catalogue.
     """
     if course.visibility is CourseVisibility.RETIRED:
         return False
     if course.visibility is CourseVisibility.SHOWCASE:
         return viewer is None
     if course.submitted_by_user_id is not None:
+        if course.curation_status is CurationStatus.PUBLISHED:
+            # Reviewed into the catalogue. It is now a course like any other;
+            # the submitter stays recorded because provenance does not expire.
+            return True
         return viewer is not None and course.submitted_by_user_id == viewer.id
     return True
 
@@ -201,12 +207,18 @@ def _visible_filter(viewer: User | None) -> Any:
 
     clauses = [Course.visibility != CourseVisibility.RETIRED]
     if viewer is None:
-        clauses.append(Course.submitted_by_user_id.is_(None))
+        clauses.append(
+            or_(
+                Course.submitted_by_user_id.is_(None),
+                Course.curation_status == CurationStatus.PUBLISHED,
+            )
+        )
     else:
         clauses.append(Course.visibility != CourseVisibility.SHOWCASE)
         clauses.append(
             or_(
                 Course.submitted_by_user_id.is_(None),
+                Course.curation_status == CurationStatus.PUBLISHED,
                 Course.submitted_by_user_id == viewer.id,
             )
         )
@@ -288,6 +300,19 @@ def _load_course(session: Session, course_ref: str) -> Course:
     except ValueError:
         course = session.scalar(select(Course).where(Course.slug == course_ref))
     if course is None:
+        raise NotFound(f"No course {course_ref!r}.")
+    return course
+
+
+def load_visible_course(session: Session, course_ref: str, viewer: User | None) -> Course:
+    """Resolve a course, honouring the directory's own visibility rules.
+
+    The 404 for "not visible to you" is the same as for "does not exist",
+    deliberately: nothing here is secret, and two different answers would still
+    let a signed-out visitor enumerate which courses exist.
+    """
+    course = _load_course(session, course_ref)
+    if not visible_to(course, viewer):
         raise NotFound(f"No course {course_ref!r}.")
     return course
 

@@ -23,6 +23,7 @@ Two implementations ship, mirroring :mod:`raceos.storage`:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import hmac
 import threading
@@ -30,7 +31,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from raceos.config import Settings, get_settings
@@ -79,6 +80,34 @@ class ProviderRefund:
 
 
 @dataclass(frozen=True)
+class ProviderSubscription:
+    """A recurring agreement, as the provider reports it.
+
+    Subscriptions are **not** two-phase. A per-race plan is authorized and then
+    captured only if the solve succeeds, because the athlete might not get what
+    they paid for; a season pass is a subscription to a service that is
+    available the moment it starts, so there is nothing to hold money against.
+    Trying to force one shape onto the other would mean either charging for a
+    failed solve or never charging for a season at all.
+    """
+
+    id: str
+    customer_id: str
+    #: The provider's own vocabulary — `incomplete`, `active`, `past_due`,
+    #: `canceled`. Deliberately not translated here, for the same reason
+    #: :class:`PaymentIntent` keeps its raw status: a state we did not
+    #: anticipate must surface as an error rather than as a wrong mapping.
+    status: str
+    current_period_end: datetime | None = None
+    #: True once a cancellation is scheduled but the paid period is still
+    #: running. The athlete keeps what they are paying for until it ends.
+    cancel_at_period_end: bool = False
+    #: For the first invoice, when the provider needs a payment method
+    #: confirmed before the subscription activates. Never logged, never stored.
+    client_secret: str | None = None
+
+
+@dataclass(frozen=True)
 class WebhookEvent:
     id: str
     type: str
@@ -118,6 +147,48 @@ class PaymentGateway(ABC):
         """Return money already captured."""
 
     @abstractmethod
+    def create_customer(self, *, email: str, name: str | None = None) -> str:
+        """A provider-side customer, returning its id.
+
+        Separate from the subscription because a customer outlives any one
+        agreement: cancelling and re-subscribing must reuse the same customer
+        so the payment methods and the invoice history stay together.
+        """
+
+    @abstractmethod
+    def create_subscription(
+        self, *, customer_ref: str, price_id: str, idempotency_key: str
+    ) -> ProviderSubscription:
+        """Start a recurring agreement. **Not two-phase** — see
+        :class:`ProviderSubscription`."""
+
+    @abstractmethod
+    def change_subscription_price(
+        self, subscription_id: str, *, price_id: str
+    ) -> ProviderSubscription:
+        """Move an existing agreement onto another price, prorated.
+
+        A season subscriber moving to coach is one subscription changing, not
+        a cancel and a re-subscribe: the latter would bill them a second full
+        period and lose the renewal date they are used to.
+        """
+
+    @abstractmethod
+    def cancel_subscription(
+        self, subscription_id: str, *, at_period_end: bool = True
+    ) -> ProviderSubscription:
+        """End a recurring agreement.
+
+        ``at_period_end`` by default, because the athlete has paid for the
+        period they are in and taking it away the moment they click cancel
+        would be taking something they already bought.
+        """
+
+    @abstractmethod
+    def resume_subscription(self, subscription_id: str) -> ProviderSubscription:
+        """Undo a cancellation that has not taken effect yet."""
+
+    @abstractmethod
     def verify_webhook(self, *, payload: bytes, signature_header: str) -> WebhookEvent:
         """Verify the signature and parse the event.
 
@@ -140,6 +211,9 @@ class InMemoryPaymentGateway(PaymentGateway):
         self._intents: dict[str, PaymentIntent] = {}
         self._by_idempotency_key: dict[str, str] = {}
         self._refunds: dict[str, ProviderRefund] = {}
+        self._customers: dict[str, str] = {}
+        self._subscriptions: dict[str, ProviderSubscription] = {}
+        self._subscription_by_key: dict[str, str] = {}
 
     def authorize(
         self,
@@ -220,6 +294,99 @@ class InMemoryPaymentGateway(PaymentGateway):
             self._refunds[refund.id] = refund
             return refund
 
+    # -- subscriptions -------------------------------------------------
+
+    def create_customer(self, *, email: str, name: str | None = None) -> str:
+        with self._lock:
+            existing = self._customers.get(email)
+            if existing is not None:
+                return existing
+            customer_id = f"cus_mem_{uuid.uuid4().hex[:16]}"
+            self._customers[email] = customer_id
+            return customer_id
+
+    def create_subscription(
+        self, *, customer_ref: str, price_id: str, idempotency_key: str
+    ) -> ProviderSubscription:
+        if not price_id:
+            raise PaymentError("no price id was configured for this tier")
+        with self._lock:
+            existing = self._subscription_by_key.get(idempotency_key)
+            if existing is not None:
+                return self._subscriptions[existing]
+            subscription_id = f"sub_mem_{uuid.uuid4().hex[:16]}"
+            subscription = ProviderSubscription(
+                id=subscription_id,
+                customer_id=customer_ref,
+                # `active`, not `incomplete`: this gateway has no card to
+                # confirm, so a subscription it creates is live. A test that
+                # wants the incomplete path drives the webhook instead.
+                status="active",
+                current_period_end=datetime.now(UTC) + timedelta(days=30),
+                client_secret=f"{subscription_id}_secret_{uuid.uuid4().hex[:16]}",
+            )
+            self._subscriptions[subscription_id] = subscription
+            self._subscription_by_key[idempotency_key] = subscription_id
+            return subscription
+
+    def _subscription(self, subscription_id: str) -> ProviderSubscription:
+        subscription = self._subscriptions.get(subscription_id)
+        if subscription is None:
+            raise PaymentError(f"no such subscription: {subscription_id}")
+        return subscription
+
+    def change_subscription_price(
+        self, subscription_id: str, *, price_id: str
+    ) -> ProviderSubscription:
+        if not price_id:
+            raise PaymentError("no price id was configured for this tier")
+        with self._lock:
+            subscription = self._subscription(subscription_id)
+            if subscription.status == "canceled":
+                raise PaymentStateError(
+                    f"subscription {subscription_id} is canceled; it cannot be changed"
+                )
+            # A price change clears a pending cancellation: an athlete moving
+            # up a tier is not still leaving.
+            updated = dataclasses.replace(
+                subscription, cancel_at_period_end=False, client_secret=None
+            )
+            self._subscriptions[subscription_id] = updated
+            return updated
+
+    def cancel_subscription(
+        self, subscription_id: str, *, at_period_end: bool = True
+    ) -> ProviderSubscription:
+        with self._lock:
+            subscription = self._subscription(subscription_id)
+            if subscription.status == "canceled":
+                raise PaymentStateError(f"subscription {subscription_id} is already canceled")
+            updated = dataclasses.replace(
+                subscription,
+                status="active" if at_period_end else "canceled",
+                cancel_at_period_end=at_period_end,
+                client_secret=None,
+            )
+            self._subscriptions[subscription_id] = updated
+            return updated
+
+    def resume_subscription(self, subscription_id: str) -> ProviderSubscription:
+        with self._lock:
+            subscription = self._subscription(subscription_id)
+            if subscription.status == "canceled":
+                raise PaymentStateError(
+                    f"subscription {subscription_id} has already ended; it cannot be resumed"
+                )
+            if not subscription.cancel_at_period_end:
+                raise PaymentStateError(
+                    f"subscription {subscription_id} is not scheduled to cancel"
+                )
+            updated = dataclasses.replace(
+                subscription, cancel_at_period_end=False, client_secret=None
+            )
+            self._subscriptions[subscription_id] = updated
+            return updated
+
     def verify_webhook(self, *, payload: bytes, signature_header: str) -> WebhookEvent:
         """The same signature scheme the real gateway uses.
 
@@ -244,6 +411,7 @@ class InMemoryPaymentGateway(PaymentGateway):
                 "gateway": "in_memory",
                 "intents": len(self._intents),
                 "refunds": len(self._refunds),
+                "subscriptions": len(self._subscriptions),
             }
 
     def clear(self) -> None:
@@ -252,6 +420,9 @@ class InMemoryPaymentGateway(PaymentGateway):
             self._intents.clear()
             self._by_idempotency_key.clear()
             self._refunds.clear()
+            self._customers.clear()
+            self._subscriptions.clear()
+            self._subscription_by_key.clear()
 
 
 #: How long a signed webhook stays acceptable. Stripe's own default; a replay

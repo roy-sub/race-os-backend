@@ -27,6 +27,27 @@ PROVENANCE_MARK = "†"  # dagger
 
 
 @dataclass(frozen=True)
+class Branding:
+    """A coach's mark. **One colour and one image, never a theme.**
+
+    This artefact is read in a transition tent, at hour nine, often through a
+    wet sleeve and often after somebody photocopied it. The glyph beside every
+    gate, the monochrome-legible contrast and the provenance footer exist
+    because of that, and a coach who could restyle the document could remove
+    them without knowing they were load-bearing.
+
+    So: the accent replaces one colour, the logo sits in one corner, and the
+    footer gains one line. Nothing else moves.
+    """
+
+    display_name: str | None
+    accent_hex: str
+    footer_note: str | None
+    #: Already a `data:` URI. The renderer reads no filesystem and no network.
+    logo_data_uri: str | None
+
+
+@dataclass(frozen=True)
 class PlanRenderData:
     """Everything a print artefact needs, already resolved.
 
@@ -46,6 +67,12 @@ class PlanRenderData:
     projected_label: str
     feasibility: str
     splits: list[dict[str, Any]]
+    #: ``{"name": "T1", "after": "SWIM", "label": "9:00"}`` for each transition
+    #: that was solved. Kept beside the leg splits rather than mixed into them
+    #: because a transition has no distance, no target and no unit — the three
+    #: columns a split row is otherwise made of. The renderer interleaves them
+    #: so the printed ladder reads in the order the race is run.
+    transitions: list[dict[str, Any]]
     gates: list[dict[str, Any]]
     segments: list[dict[str, Any]]
     fuelling: dict[str, Any]
@@ -53,6 +80,11 @@ class PlanRenderData:
     bags: list[dict[str, Any]]
     constraint_refs: list[dict[str, Any]]
     assumed_fields: list[str]
+    #: A coach's mark, when the plan was built by one who has set any. `None`
+    #: produces the house artefact — which is also what an empty branding row
+    #: produces, so a coach who has configured nothing does not get a subtly
+    #: different document.
+    branding: Branding | None = None
 
 
 def _footer(data: PlanRenderData) -> str:
@@ -79,10 +111,19 @@ def _footer(data: PlanRenderData) -> str:
     return " · ".join(parts)
 
 
-def _base_css() -> str:
+def _accent(data: PlanRenderData) -> str:
+    """The accent this document renders with. The house one unless branded."""
+    return data.branding.accent_hex if data.branding is not None else tokens.ACCENT
+
+
+def _base_css(accent: str = tokens.ACCENT) -> str:
     """One stylesheet, from the shared token module.
 
     Screen and print therefore cannot drift: both read the same values.
+
+    ``accent`` is the single value a coach may replace, and it is validated
+    for contrast against the paper before it ever reaches here — see
+    :func:`raceos.services.branding_service.validate_accent`.
     """
     return f"""
     @page {{
@@ -110,7 +151,7 @@ def _base_css() -> str:
     .meta {{ color: {tokens.MUTED}; font-size: 8.5pt; margin-bottom: 1mm; }}
     .headline {{
       font-size: 26pt; font-weight: 700; letter-spacing: -0.6pt;
-      color: {tokens.ACCENT}; margin: 1mm 0 0 0;
+      color: {accent}; margin: 1mm 0 0 0;
     }}
     table {{ width: 100%; border-collapse: collapse; }}
     th {{
@@ -128,6 +169,19 @@ def _base_css() -> str:
       font-weight: 700; display: inline-block; min-width: 4mm;
     }}
     .reason {{ color: {tokens.MUTED}; font-size: 8pt; }}
+    /* A coach's mark sits above the athlete line and takes a fixed height, so
+       a tall logo cannot push the plan onto a second page. */
+    .brand {{
+      display: flex; align-items: center; gap: 2mm;
+      margin: 0 0 2mm 0; padding: 0 0 2mm 0;
+      border-bottom: 0.3pt solid {tokens.RULE};
+    }}
+    .brand-logo {{ max-height: 8mm; max-width: 40mm; }}
+    .brand-name {{ font-size: 9pt; font-weight: 600; color: {tokens.INK}; }}
+    /* A transition is a row in the ladder but not a leg. Set in the muted
+       ink rather than given a tint, because this artefact has to survive a
+       monochrome print — the same reason every gate carries a glyph. */
+    tr.transition td {{ color: {tokens.MUTED}; font-size: 8.5pt; }}
     #provenance {{
       position: running(provenance);
       font-size: 6.5pt; color: {tokens.MUTED};
@@ -138,7 +192,37 @@ def _base_css() -> str:
 
 
 def _provenance_block(data: PlanRenderData) -> str:
-    return f'<div id="provenance">{_footer(data)}</div>'
+    """The footer. **A coach adds a line; they never replace one.**
+
+    Everything the house footer says — which bundle version this was solved
+    against, which values were estimated, what was assumed — is why a printed
+    card can be trusted, and it is exactly what somebody rebranding a document
+    would be tempted to remove. The coach's note is appended after it.
+    """
+    footer = _footer(data)
+    if data.branding is not None and data.branding.footer_note:
+        footer = f"{footer} · {escape(data.branding.footer_note)}"
+    return f'<div id="provenance">{footer}</div>'
+
+
+def _branding_block(data: PlanRenderData) -> str:
+    """The coach's mark, above the athlete line. Empty without one."""
+    branding = data.branding
+    if branding is None:
+        return ""
+    parts: list[str] = []
+    if branding.logo_data_uri:
+        # `alt` and not only an image: a PDF read by a screen reader, and a
+        # monochrome photocopy, both need the name in text.
+        parts.append(
+            f'<img class="brand-logo" src="{escape(branding.logo_data_uri)}" '
+            f'alt="{escape(branding.display_name or "Coach logo")}">'
+        )
+    if branding.display_name:
+        parts.append(f'<span class="brand-name">{escape(branding.display_name)}</span>')
+    if not parts:
+        return ""
+    return f'<div class="brand">{"".join(parts)}</div>'
 
 
 def race_card_html(data: PlanRenderData) -> str:
@@ -148,14 +232,33 @@ def race_card_html(data: PlanRenderData) -> str:
     a glyph, that the provenance footer is present — without parsing a PDF
     to get back to text that was already text.
     """
-    split_rows = "".join(
-        f"<tr><td><strong>{escape(str(s['leg']))}</strong></td>"
-        f"<td class='num'>{s['distance']:.1f} km</td>"
-        f"<td class='num'>{escape(str(s['target_pace_or_power']))}{escape(str(s['unit']))}</td>"
-        f"<td class='num'>{escape(str(s.get('split_label') or ''))}</td>"
-        f"<td class='reason'>{escape(str(s.get('note') or ''))}</td></tr>"
-        for s in data.splits
-    )
+    # Swim, T1, bike, T2, run — the order the race is actually run in, so the
+    # printed ladder adds up to the projected time on the same page. A
+    # transition with no solved value is simply absent rather than shown as a
+    # dash: a plan solved before transitions were stored has no number, and an
+    # empty row would read as "no transition".
+    after_leg: dict[str, list[dict[str, Any]]] = {}
+    for transition in data.transitions:
+        after_leg.setdefault(str(transition["after"]), []).append(transition)
+
+    rows: list[str] = []
+    for s in data.splits:
+        rows.append(
+            f"<tr><td><strong>{escape(str(s['leg']))}</strong></td>"
+            f"<td class='num'>{s['distance']:.1f} km</td>"
+            f"<td class='num'>{escape(str(s['target_pace_or_power']))}"
+            f"{escape(str(s['unit']))}</td>"
+            f"<td class='num'>{escape(str(s.get('split_label') or ''))}</td>"
+            f"<td class='reason'>{escape(str(s.get('note') or ''))}</td></tr>"
+        )
+        for transition in after_leg.get(str(s["leg"]), []):
+            rows.append(
+                f"<tr class='transition'><td>{escape(str(transition['name']))}</td>"
+                f"<td class='num'>&mdash;</td><td class='num'>&mdash;</td>"
+                f"<td class='num'>{escape(str(transition['label']))}</td>"
+                f"<td class='reason'>{escape(str(transition.get('note') or ''))}</td></tr>"
+            )
+    split_rows = "".join(rows)
 
     gate_rows = "".join(
         f"<tr><td>{escape(str(g['name']).replace('_', ' '))}</td>"
@@ -178,8 +281,9 @@ def race_card_html(data: PlanRenderData) -> str:
     )
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
-<style>{_base_css()}</style></head><body>
+<style>{_base_css(_accent(data))}</style></head><body>
 {_provenance_block(data)}
+{_branding_block(data)}
 <div class="meta">{escape(data.athlete_name)} · {escape(data.course_name)},
 {escape(data.course_place)} · {escape(data.event_date)} {escape(data.start_time)}</div>
 <h1>Race card</h1>
@@ -243,7 +347,7 @@ def bag_manifest_html(data: PlanRenderData) -> str:
         )
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
-<style>{_base_css()}
+<style>{_base_css(_accent(data))}
 section:last-of-type {{ page-break-after: auto; }}
 </style></head><body>
 {_provenance_block(data)}

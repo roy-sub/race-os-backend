@@ -39,6 +39,23 @@ def test_the_readme_route_count_is_true(readme: str, route_count: int) -> None:
     assert int(match.group(1)) == route_count
 
 
+def test_the_readme_route_table_sums_to_the_stated_total(readme: str, route_count: int) -> None:
+    """The per-area table drifted to five short of the total while the total
+    itself stayed true, because only the total was ever checked. A reader uses
+    the table to find where a route lives, so a row that undercounts is the
+    same class of untruth as a wrong total."""
+    table = re.search(r"^\| Area \| Routes \|$.*?(?=\n\n)", readme, re.MULTILINE | re.DOTALL)
+    assert table, "the README does not contain a route-area table"
+
+    rows = re.findall(r"^\| (?!Area\b)(.+?) \| (\d+) \|$", table.group(0), re.MULTILINE)
+    assert rows, "the route-area table has no rows"
+
+    total = sum(int(n) for _, n in rows)
+    assert total == route_count, (
+        f"the route-area table sums to {total} but the app has {route_count} routes"
+    )
+
+
 def test_every_job_in_the_readme_table_exists(readme: str) -> None:
     """A cron configured from a stale table calls a 404 forever."""
     documented = set(re.findall(r"^\| `([a-z-]+)` \| `([^`]+)` \|", readme, re.MULTILINE))

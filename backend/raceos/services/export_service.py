@@ -25,10 +25,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from raceos.api.errors import Conflict, NotFound
 from raceos.api.schemas.plan import PlanDetail, format_hm
+from raceos.config import Settings
 from raceos.db.models import Course, CourseBundle, CourseBundleLeg, Plan, Race, User
 from raceos.domain.enums import Leg, PlanStatus
 from raceos.exports.files import CalendarEvent, RoutePoint, Waypoint, race_week_events
-from raceos.exports.pdf import PlanRenderData
+from raceos.exports.pdf import Branding, PlanRenderData
 
 #: A course file is per-leg. A head unit follows one route; concatenating a
 #: swim, a bike and a run into a single course would produce a track that
@@ -87,7 +88,14 @@ def require_exportable(plan: Plan) -> None:
 # ---------------------------------------------------------------------------
 
 
-def build_render_data(context: ExportContext, detail: PlanDetail) -> PlanRenderData:
+def build_render_data(
+    context: ExportContext,
+    detail: PlanDetail,
+    *,
+    session: Session | None = None,
+    settings: Settings | None = None,
+    branded: bool = False,
+) -> PlanRenderData:
     """Take the numbers from the serialised plan, not from the ORM rows.
 
     The printed card is then the same object the app displays, formatted
@@ -107,6 +115,7 @@ def build_render_data(context: ExportContext, detail: PlanDetail) -> PlanRenderD
         projected_label=detail.projected_label or format_hm(plan.projected_minutes) or "—",
         feasibility=plan.feasibility.value,
         splits=[split.model_dump(mode="json") for split in detail.splits],
+        transitions=_transition_rows(detail),
         gates=[gate.model_dump(mode="json") for gate in detail.gates],
         segments=[segment.model_dump(mode="json") for segment in detail.segments],
         fuelling=fuelling,
@@ -114,7 +123,71 @@ def build_render_data(context: ExportContext, detail: PlanDetail) -> PlanRenderD
         bags=[bag.model_dump(mode="json") for bag in detail.bags],
         constraint_refs=[ref.model_dump(mode="json") for ref in detail.constraint_refs],
         assumed_fields=list(plan.assumed_fields or []),
+        branding=_branding(context, session=session, settings=settings, branded=branded),
     )
+
+
+def _branding(
+    context: ExportContext,
+    *,
+    session: Session | None,
+    settings: Settings | None,
+    branded: bool,
+) -> Branding | None:
+    """The coach's mark, when this export asked for it and there is one.
+
+    Off by default. A branded artefact is something a coach hands over
+    deliberately, and an athlete downloading their own race card should get the
+    house document unless somebody chose otherwise.
+    """
+    if not branded or session is None or settings is None:
+        return None
+    coach_id = context.plan.built_by_coach_id
+    if coach_id is None:
+        return None
+
+    from raceos.db.models import User
+    from raceos.services import branding_service
+
+    coach = session.get(User, coach_id)
+    resolved = branding_service.resolve(session, coach=coach, settings=settings)
+    if resolved is None:
+        return None
+    return Branding(
+        display_name=resolved.display_name,
+        accent_hex=resolved.accent_hex,
+        footer_note=resolved.footer_note,
+        logo_data_uri=resolved.logo_data_uri,
+    )
+
+
+def _transition_rows(detail: PlanDetail) -> list[dict[str, Any]]:
+    """T1 and T2 as print rows, positioned by the leg they follow.
+
+    Absent when the plan has no solved value for them — a draft, or a plan
+    solved before transitions were stored. An empty row in the ladder would
+    read as "no transition", which is worse than not printing one.
+    """
+    rows: list[dict[str, Any]] = []
+    if detail.t1_label is not None:
+        rows.append(
+            {
+                "name": "T1",
+                "after": Leg.SWIM.value,
+                "label": detail.t1_label,
+                "note": "Swim to bike",
+            }
+        )
+    if detail.t2_label is not None:
+        rows.append(
+            {
+                "name": "T2",
+                "after": Leg.BIKE.value,
+                "label": detail.t2_label,
+                "note": "Bike to run",
+            }
+        )
+    return rows
 
 
 # ---------------------------------------------------------------------------

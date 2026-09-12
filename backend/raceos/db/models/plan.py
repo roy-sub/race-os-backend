@@ -66,6 +66,20 @@ class Plan(Entity):
 
     goal_minutes: Mapped[float | None] = mapped_column(Numeric)
     projected_minutes: Mapped[float | None] = mapped_column(Numeric)
+    #: The two transitions, in minutes, as solved.
+    #:
+    #: Stored rather than recovered by subtracting the three leg splits from
+    #: ``projected_minutes``: that subtraction yields the *total* transition
+    #: time and cannot separate T1 from T2. T1 is the one that carries the
+    #: wetsuit strip, so it is the one an athlete plans against — and a race
+    #: card that prints "T1 6:00" when the athlete will actually spend nine
+    #: minutes peeling a wetsuit is worse than one that prints nothing.
+    #:
+    #: Nullable because a draft has not been solved and every plan written
+    #: before this column existed has no value to backfill with. A guessed
+    #: split would be indistinguishable from a solved one.
+    t1_minutes: Mapped[float | None] = mapped_column(Numeric)
+    t2_minutes: Mapped[float | None] = mapped_column(Numeric)
     feasibility: Mapped[Feasibility] = mapped_column(
         pg_enum(Feasibility, "feasibility"),
         nullable=False,
@@ -96,6 +110,19 @@ class Plan(Entity):
     #: Persisted so the UI can mark affected numbers and back-testing can
     #: stratify plans that rested on an assumption.
     assumed_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+    #: `model:` keys naming where this plan sits **outside its own evidence**.
+    #:
+    #: Distinct from ``assumed_fields``, which records inputs the athlete did
+    #: not supply. This records the model's own range: every input was present
+    #: and the answer still rests on ground the data does not cover — a heat
+    #: decrement applied over a leg far longer than the hour it was measured
+    #: over, a curve held flat above its top knot rather than extrapolated.
+    #:
+    #: Persisted with the plan, not recomputed on read, because it describes
+    #: the solve that produced these numbers rather than the conditions today.
+    advisories: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default=text("'{}'")
     )
 
@@ -141,6 +168,11 @@ class Plan(Entity):
         Index("ix_plans_solve_input_hash", "solve_input_hash"),
         Index("ix_plans_race_id_version", "race_id", text("version DESC")),
         CheckConstraint("version >= 1", name="plans_version_positive"),
+        # A transition takes time. Zero would mean the athlete teleported, and
+        # a negative one is a sign error the race card would otherwise render
+        # as a plausible-looking clock time.
+        CheckConstraint("t1_minutes IS NULL OR t1_minutes > 0", name="plans_t1_minutes_positive"),
+        CheckConstraint("t2_minutes IS NULL OR t2_minutes > 0", name="plans_t2_minutes_positive"),
     )
 
 

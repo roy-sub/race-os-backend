@@ -2,6 +2,9 @@
   "case_id": "G01-FULL",
   "course_id": "C-TRAM",
   "output": {
+    "advisories": [
+      "model:bike_heat_duration"
+    ],
     "aid_actions": [
       {
         "action_text": "Take 75 g carb, 935 ml fluid, 898 mg sodium per hour.",
@@ -872,6 +875,8 @@
         "unit": "/km"
       }
     ],
+    "t1_minutes": "9.0",
+    "t2_minutes": "6.0",
     "wetsuit_used": true,
     "wetsuit_warning": false,
     "worst_margin_minutes": "68.9"

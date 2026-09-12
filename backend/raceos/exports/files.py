@@ -96,45 +96,88 @@ class CalendarEvent:
     all_day: bool = True
 
 
+@dataclass(frozen=True)
+class RaceWeekItem:
+    """One dated thing to do before a race.
+
+    The single derivation behind both the calendar export and the checklist.
+    They were two lists of the same week once, and two lists of the same week
+    disagree: a task ticked off on one screen that is still open on the other
+    is how somebody misses a bag hand-in.
+    """
+
+    #: Stable across regeneration, so a completed task survives the checklist
+    #: being rebuilt. Never a date or a title — both can change.
+    key: str
+    title: str
+    description: str
+    #: Days before the race. Negative would be after it; nothing here is.
+    days_before: int
+
+
+#: Race week, as days before the event. **Never weekday names.**
+#:
+#: The prototype's "Thursday: bike check-in" is a rendering of "two days
+#: before", and storing the weekday would be wrong for every race not held on
+#: a Sunday.
+RACE_WEEK_ITEMS: tuple[RaceWeekItem, ...] = (
+    RaceWeekItem(
+        key="registration",
+        title="Registration opens",
+        description="Collect your race pack and timing chip.",
+        days_before=3,
+    ),
+    RaceWeekItem(
+        key="pack_bags",
+        title="Pack bags",
+        description="Pack all five bags against the manifests.",
+        days_before=2,
+    ),
+    RaceWeekItem(
+        key="bike_check_in",
+        title="Bike check-in",
+        description="Rack the bike and hand in your bags.",
+        days_before=1,
+    ),
+    RaceWeekItem(
+        key="race_day",
+        title="Race day",
+        description="Race morning. Everything is already decided.",
+        days_before=0,
+    ),
+)
+
+#: Added only when the plan actually has special-needs bags. A deadline for
+#: something this race does not offer is a deadline to ignore, and a checklist
+#: with one line nobody can act on is a checklist people stop reading.
+SPECIAL_NEEDS_ITEM = RaceWeekItem(
+    key="special_needs",
+    title="Special-needs deadline",
+    description="Special-needs bags must be handed in.",
+    days_before=1,
+)
+
+
+def race_week_items(*, has_special_needs: bool) -> list[RaceWeekItem]:
+    """The week's items, soonest last, in the order they fall."""
+    items = [*RACE_WEEK_ITEMS]
+    if has_special_needs:
+        items.append(SPECIAL_NEEDS_ITEM)
+    return sorted(items, key=lambda item: -item.days_before)
+
+
 def race_week_events(
     *, event_date: date, course_name: str, has_special_needs: bool
 ) -> list[CalendarEvent]:
-    """Derived from the **actual event date**, never fixed weekday labels.
-
-    The mock's "Thursday: bike check-in" is a rendering of "two days before";
-    storing the weekday would be wrong for any race that is not on a Sunday.
-    """
-    events = [
+    """The same items as the checklist, as calendar events."""
+    return [
         CalendarEvent(
-            summary=f"{course_name} — race day",
-            description="Race morning. Everything is already decided.",
-            on_date=event_date,
-        ),
-        CalendarEvent(
-            summary=f"{course_name} — bike check-in",
-            description="Rack the bike and hand in your bags.",
-            on_date=event_date - timedelta(days=1),
-        ),
-        CalendarEvent(
-            summary=f"{course_name} — pack bags",
-            description="Pack all five bags against the manifests.",
-            on_date=event_date - timedelta(days=2),
-        ),
-        CalendarEvent(
-            summary=f"{course_name} — registration opens",
-            description="Collect your race pack and timing chip.",
-            on_date=event_date - timedelta(days=3),
-        ),
-    ]
-    if has_special_needs:
-        events.append(
-            CalendarEvent(
-                summary=f"{course_name} — special-needs deadline",
-                description="Special-needs bags must be handed in.",
-                on_date=event_date - timedelta(days=1),
-            )
+            summary=f"{course_name} — {item.title.lower()}",
+            description=item.description,
+            on_date=event_date - timedelta(days=item.days_before),
         )
-    return sorted(events, key=lambda e: e.on_date)
+        for item in race_week_items(has_special_needs=has_special_needs)
+    ]
 
 
 def render_ics(*, events: list[CalendarEvent], calendar_name: str) -> bytes:

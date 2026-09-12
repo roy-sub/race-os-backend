@@ -16,8 +16,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "b2d8e3c4a5f6"
 down_revision: str | None = "a1c7f2b9d3e4"
@@ -62,9 +63,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "status", SUBMISSION_STATUS, server_default=sa.text("'draft'"), nullable=False
-        ),
+        sa.Column("status", SUBMISSION_STATUS, server_default=sa.text("'draft'"), nullable=False),
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("place", sa.Text(), nullable=False),
         sa.Column("country", sa.String(length=2), nullable=True),

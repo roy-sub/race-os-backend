@@ -378,6 +378,8 @@ def _build_output(
         feasibility=(Feasibility.CLEAR if state is MarginState.CLEAR else Feasibility.TIGHT),
         projected_minutes=rnd.round_half_even(profile.total_minutes, rnd.MINUTES_DP),
         splits=splits,
+        t1_minutes=rnd.round_half_even(profile.t1_minutes, rnd.MINUTES_DP),
+        t2_minutes=rnd.round_half_even(profile.t2_minutes, rnd.MINUTES_DP),
         segments=tuple(segments),
         gates=gates,
         fuelling=packed,
@@ -389,6 +391,7 @@ def _build_output(
         margin_state=state,
         # Sorted lexicographically so it is deterministic and diffable (§F.6).
         assumed_fields=tuple(sorted(assumed)),
+        advisories=profile.advisories,
         infeasibility=None,
         stage_timings_ms={},
         wetsuit_warning=profile.swim.wetsuit_warning,

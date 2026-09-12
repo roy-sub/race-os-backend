@@ -15,14 +15,22 @@ from raceos.db.models.billing import (
     Refund,
     Subscription,
 )
-from raceos.db.models.coach import CoachAthleteLink, CoachNote, ShareLink, ShareLinkOpen
+from raceos.db.models.coach import (
+    CoachAthleteLink,
+    CoachBranding,
+    CoachNote,
+    ShareLink,
+    ShareLinkOpen,
+)
 from raceos.db.models.course import (
     Course,
     CourseBundle,
     CourseBundleDiff,
     CourseBundleLeg,
+    CourseConditionsHistory,
     CourseSubmission,
     Race,
+    RaceWeekTask,
 )
 from raceos.db.models.identity import (
     AdminRoleAssignment,
@@ -85,6 +93,7 @@ __all__ = [
     "Base",
     "CacheEntry",
     "CoachAthleteLink",
+    "CoachBranding",
     "CoachNote",
     "Constraint",
     "ConstraintHistory",
@@ -92,6 +101,7 @@ __all__ = [
     "CourseBundle",
     "CourseBundleDiff",
     "CourseBundleLeg",
+    "CourseConditionsHistory",
     "CourseSubmission",
     "CrowdReport",
     "CrowdReportUpload",
@@ -123,6 +133,7 @@ __all__ = [
     "Purchase",
     "PushSubscription",
     "Race",
+    "RaceWeekTask",
     "RateLimitCounter",
     "Refund",
     "ServiceHealth",

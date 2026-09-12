@@ -27,6 +27,7 @@ from raceos.solver.environment import (
 from raceos.solver.models import ForecastSnapshot
 from raceos.solver.stages.s1_course import CourseGeometry, SegmentGeometry
 from raceos.solver.stages.s2_athlete import AthleteState
+from raceos.solver.tables import heat_curve as hc
 from raceos.solver.tables import intensity as intensity_tbl
 from raceos.solver.tables import run_model as run_tbl
 from raceos.solver.tables import swim_model as swim_tbl
@@ -67,6 +68,14 @@ class BikeResult:
     k_grade_used: float
     vi_ceiling_bound: bool
     segment_ceiling_bound: bool
+    #: A heat decrement was applied over a leg longer than the ~60-minute time
+    #: trial the knots were measured over. True for essentially every hot long-
+    #: course bike, which is correct: that is the population the curve is
+    #: weakest for, and saying so on all of them is the honest behaviour.
+    heat_beyond_source_duration: bool = False
+    #: WBGT above the top knot, so the factor is held flat rather than
+    #: extrapolated. The refusal is deliberate and it errs optimistic.
+    heat_clamped: bool = False
 
 
 def _segment_minutes_over_histogram(
@@ -125,7 +134,8 @@ def solve_bike(
     """Cost the bike leg at ``if_plan``, backing off ``k_grade`` if VI binds."""
     leg = geometry.leg(Leg.BIKE)
     ftp_alt = athlete.bike_threshold_power * alt_factor(leg.mean_elevation_m)
-    base_power = ftp_alt * if_plan * bike_heat_factor(wbgt_c)
+    heat_factor = bike_heat_factor(wbgt_c)
+    base_power = ftp_alt * if_plan * heat_factor
     segment_ceiling = athlete.bike_threshold_power * intensity_tbl.IF_SEGMENT_CEILING
 
     ceiling_bound = False
@@ -186,15 +196,29 @@ def solve_bike(
         if attempt_index == len(attempts) - 1:  # pragma: no cover - k=0 always passes
             break
 
+    bike_minutes = sum(r.minutes for r in results)
+
+    # Two ways this leg can sit outside what the heat curve was measured over.
+    # Neither changes a number — there is no duration term to apply and no
+    # basis for inventing one — but both are the difference between a soft
+    # figure and a soft figure the athlete was told about.
+    reference_wbgt = hc.BIKE_HEAT_KNOTS[1][0]
+    top_knot_wbgt = hc.BIKE_HEAT_KNOTS[-1][0]
+    decrement_applied = wbgt_c > reference_wbgt
+
     return BikeResult(
         segments=results,
-        minutes=sum(r.minutes for r in results),
+        minutes=bike_minutes,
         normalised_power=normalised,
         average_power=average,
         variability_index=variability,
         k_grade_used=k_grade,
         vi_ceiling_bound=vi_bound,
         segment_ceiling_bound=ceiling_bound,
+        heat_beyond_source_duration=(
+            decrement_applied and bike_minutes > hc.BIKE_HEAT_SOURCE_MINUTES
+        ),
+        heat_clamped=wbgt_c >= top_knot_wbgt,
     )
 
 
@@ -312,8 +336,15 @@ class SwimResult:
     wetsuit_warning: bool
 
 
-def wetsuit_decision(water_temp_c: float) -> tuple[bool, bool]:
-    """``(wetsuit, award_warning)`` from Ironman competition rules (§4.4.3).
+def wetsuit_decision(water_temp_c: float, ruleset: str | None = None) -> tuple[bool, bool]:
+    """``(wetsuit, award_warning)`` under a federation's competition rules (§4.4.3).
+
+    Read from :data:`~raceos.solver.tables.swim_model.WETSUIT_RULESETS` rather
+    than from three module constants, because these are **rules, not physics**:
+    they change when a federation publishes a new rulebook, they differ between
+    federations, and neither of those is something back-testing can detect.
+    Adding a federation is a table entry; the annual re-check is a dated one
+    that fails a test when it lapses.
 
     These thresholds are **genuinely discontinuous** — 24.5 °C and 24.6 °C
     produce different equipment, hence a ~4.5% pace step. That discontinuity is
@@ -323,11 +354,12 @@ def wetsuit_decision(water_temp_c: float) -> tuple[bool, bool]:
     result. That is an assumption about intent rather than physiology, so it is
     surfaced as a warning rather than hidden.
     """
-    if water_temp_c < swim_tbl.WETSUIT_MANDATORY_BELOW_C:
+    rules = swim_tbl.wetsuit_ruleset(ruleset)
+    if water_temp_c < rules.mandatory_below_c:
         return True, False
-    if water_temp_c <= swim_tbl.WETSUIT_LEGAL_MAX_C:
+    if water_temp_c <= rules.legal_max_c:
         return True, False
-    if water_temp_c <= swim_tbl.WETSUIT_NON_AWARD_MAX_C:
+    if water_temp_c <= rules.non_award_max_c:
         return False, True
     return False, False
 
@@ -418,6 +450,27 @@ class RaceProfile:
     bike: BikeResult
     t2_minutes: float
     run: RunResult
+
+    @property
+    def advisories(self) -> tuple[str, ...]:
+        """`model:` keys naming where this plan sits outside its own evidence.
+
+        Sorted, so the set is deterministic and diffable in a golden file — the
+        same reason ``assumed_fields`` is sorted.
+
+        These do not change a number. They say which numbers are soft, which is
+        the difference between the model's own instruction ("treat hot
+        full-distance projections as its least trustworthy output") being
+        written in a document and being told to the person racing.
+        """
+        keys: list[str] = []
+        if self.bike.heat_beyond_source_duration:
+            keys.append("model:bike_heat_duration")
+        if self.bike.heat_clamped:
+            keys.append("model:bike_heat_clamp")
+        if self.run.heat_clamped:
+            keys.append("model:run_heat_clamp")
+        return tuple(sorted(keys))
 
     @property
     def total_minutes(self) -> float:

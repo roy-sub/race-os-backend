@@ -11,8 +11,10 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from raceos.api.advisory_copy import advisory_copy
 from raceos.api.constraint_copy import CONSTRAINT_COPY
 from raceos.api.schemas.plan import (
+    AdvisoryOut,
     AidActionOut,
     BagItemOut,
     BagOut,
@@ -24,6 +26,7 @@ from raceos.api.schemas.plan import (
     SegmentOut,
     SplitOut,
     format_hm,
+    format_ms,
 )
 from raceos.db.models import (
     Course,
@@ -69,6 +72,11 @@ def _with_drawer_copy(ref: ConstraintRefOut) -> ConstraintRefOut:
 def plan_summary(plan: Plan) -> PlanSummary:
     out = PlanSummary.model_validate(plan)
     out.projected_label = format_hm(plan.projected_minutes)
+    # `M:SS`, not the `H:MM` the leg splits use: a transition is minutes and
+    # seconds, and rendering 6.4 minutes as "0:06" throws away the part an
+    # athlete in a transition tent actually cares about.
+    out.t1_label = format_ms(plan.t1_minutes)
+    out.t2_label = format_ms(plan.t2_minutes)
     return out
 
 
@@ -140,6 +148,15 @@ def plan_detail(session: Session, plan: Plan) -> PlanDetail:
         for row in session.scalars(
             select(PlanConstraintRef).where(PlanConstraintRef.plan_id == plan.id)
         )
+    ]
+
+    # Model-range caveats, as sentences. A key with no copy is dropped rather
+    # than rendered bare: `model:bike_heat_clamp` on a race card looks like a
+    # bug to the athlete and tells them nothing either way.
+    detail.advisories = [
+        AdvisoryOut(key=key, tag=copy.tag, text=copy.text)
+        for key, copy in ((key, advisory_copy(key)) for key in plan.advisories or [])
+        if copy is not None
     ]
 
     # Race identity, so a caller rendering the race card does not need a

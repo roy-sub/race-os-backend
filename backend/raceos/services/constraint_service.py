@@ -59,8 +59,12 @@ def staleness_days(key: str, settings: Settings) -> int:
 def is_stale(constraint: Constraint, settings: Settings) -> bool:
     """Only ``tested`` and ``measured`` values go stale.
 
-    A ``manual`` or ``estimated`` value was never a measurement, so calling it
-    "six months old" would imply a precision it never had.
+    A ``manual``, ``estimated`` or ``imported`` value was never a measurement,
+    so calling it "six months old" would imply a precision it never had. That
+    is a deliberate non-obvious case for ``imported``: a figure from a
+    bike-split modeller is a *model's* output, and it does not decay the way a
+    ramp test does — it is wrong the moment the athlete changes, not after an
+    interval.
     """
     if constraint.source not in (ConstraintSource.TESTED, ConstraintSource.MEASURED):
         return False

@@ -7,12 +7,19 @@ environment's egress policy blocked every publisher host, and it blocks them
 here too. The values below are transcribed verbatim and are tunable without a
 deploy, which is exactly why they live in a table.
 
-Two entries are Tier-1 verification items:
+One entry remains a Tier-1 verification item: the bike heat curve's assumed
+laboratory humidity, :data:`PEIFFER_LAB_RH`.
 
-* :data:`STULL_COEFFS` — if these are wrong, **every heat number in the model
-  is wrong**, because both heat curves are expressed on the WBGT axis this
-  feeds.
-* the bike heat curve's assumed laboratory humidity, :data:`PEIFFER_LAB_RH`.
+:data:`STULL_COEFFS` is **no longer one of them.** It was, and the reason was
+that the publisher could not be reached to check the six digits against the
+paper. That is still true, and it turns out not to be the only way to check
+them: Stull's expression is an empirical fit to the psychrometer equation, and
+that equation can be solved numerically from Magnus saturation vapour pressure
+without reference to Stull at all. The two agree to a mean of 0.24 °C and a
+worst case of 0.68 °C across 5-40 °C and 30-100% RH, which is the order of
+Stull's own stated fit error — so the coefficients are doing the job the paper
+says they do. ``tests/unit/test_solver_environment.py`` holds that check, and a
+companion test shows a misplaced decimal would miss by 41 °C.
 """
 
 from __future__ import annotations
@@ -29,8 +36,11 @@ from raceos.domain.enums import AthleteLevel
 # T −20 to +50 °C. Chosen because it is closed-form, continuous, deterministic
 # and needs only the two variables the forecast actually carries.
 #
-# ⚠ VERIFY (§E-1): all six digits, and that every `atan` is in RADIANS. Using
-# degrees is the single most common implementation error with this formula.
+# ✔ VERIFIED, by reproduction rather than by transcription. These coefficients
+# recover the psychrometer equation — solved independently, from Magnus vapour
+# pressure — to a mean of 0.24 °C over racing conditions. Radians confirmed the
+# same way: degrees puts the same expression two orders of magnitude out.
+# See `tests/unit/test_solver_environment.py`.
 # ---------------------------------------------------------------------------
 
 STULL_COEFFS: Final[tuple[float, float, float, float, float, float]] = (
@@ -103,6 +113,23 @@ BIKE_HEAT_KNOTS: Final[tuple[tuple[float, float], ...]] = (
     (20.707, 0.99383),  # 27 °C
     (25.053, 0.95370),  # 32 °C
 )
+
+#: How long the ride the bike knots were measured over actually was.
+#:
+#: Peiffer's protocol is a 40 km time trial — about an hour. Both distances we
+#: sell have bike legs far longer: roughly 2.5 h at 70.3 and 4.5-7 h at full.
+#: Thermal strain accumulates over exactly that span, so the curve **under-
+#: states the decrement for every format we sell, and the bias grows with race
+#: length** (`docs/LAUNCH_BLOCKERS.md` D-1).
+#:
+#: There is no duration term, and this constant is not one. Fitting one needs
+#: back-tested hot full-distance races, and no published dose-response over
+#: that duration is believed to exist — so inventing a coefficient would put a
+#: number on the page that nothing supports, which is the one thing this model
+#: does not do. What the constant is for is knowing **when to say so**: a heat
+#: decrement applied over a leg this much longer than its source is a figure
+#: the athlete should be told is soft.
+BIKE_HEAT_SOURCE_MINUTES: Final[float] = 60.0
 
 #: The flat clamp above the top knot is a **deliberate refusal to
 #: extrapolate**, and it matters. A power law through the top two knots gives

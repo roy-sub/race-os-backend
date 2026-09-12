@@ -46,7 +46,39 @@ DEFAULT_CHANNELS: dict[NotificationType, tuple[bool, bool, bool]] = {
     NotificationType.BUNDLE: (True, False, True),
     NotificationType.ANALYSIS: (True, False, True),
     NotificationType.DIGEST: (False, False, True),
+    # Someone else acted and the athlete needs to know, so email is on.
+    NotificationType.PLAN_READY: (True, False, True),
+    NotificationType.COACH_SHARED: (True, False, True),
+    NotificationType.ATHLETE_ACCEPTED: (True, False, True),
+    # Money. A receipt is in-app by default because the invoice is already on
+    # the billing screen and a second copy in the inbox is clutter.
+    NotificationType.PAYMENT_SUCCEEDED: (False, False, True),
+    # A decline costs the athlete access to things they believe they have paid
+    # for, so it goes everywhere and cannot be switched off in-app.
+    NotificationType.PAYMENT_FAILED: (True, False, True),
+    # Before the charge, not after: the point is the chance to cancel, and a
+    # notification nobody saw in time is worse than none.
+    NotificationType.SUBSCRIPTION_RENEWING: (True, False, True),
+    NotificationType.SUPPORT_ACCESS: (True, False, True),
+    # The athlete asked for this outcome by submitting a course, and it can
+    # arrive weeks later, so email rather than waiting for them to come back.
+    NotificationType.COURSE_REVIEWED: (True, False, True),
 }
+
+
+def _every_type_has_a_default() -> None:
+    """Guards the one way this table goes wrong.
+
+    ``preferences_for`` indexes it by every member of the enum, so a type added
+    without an entry raises ``KeyError`` the first time anybody opens their
+    settings. Failing at import is better than failing on a screen.
+    """
+    missing = [t.value for t in NotificationType if t not in DEFAULT_CHANNELS]
+    if missing:  # pragma: no cover - a programming error, caught at import
+        raise RuntimeError(f"notification types with no default channels: {missing}")
+
+
+_every_type_has_a_default()
 
 
 # ---------------------------------------------------------------------------

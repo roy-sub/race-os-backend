@@ -80,18 +80,28 @@ def migrated_engine(database_url: str) -> Iterator[Engine]:
     reset_engine_ = create_engine(database_url)
     try:
         with reset_engine_.begin() as connection:
-            head = connection.execute(
-                text(
-                    "SELECT version_num FROM alembic_version "
-                    "WHERE to_regclass('public.alembic_version') IS NOT NULL"
-                )
-            ).scalar_one_or_none()
+            # Two statements, not one. PostgreSQL plans the whole query before
+            # it runs, so a `WHERE to_regclass(...) IS NOT NULL` guard in the
+            # same statement does not save a `SELECT ... FROM alembic_version`
+            # from failing with UndefinedTable on a database that has never
+            # been migrated — which is exactly the state a fresh checkout is
+            # in, and is the one case this reset has to handle.
+            stamped = connection.execute(
+                text("SELECT to_regclass('public.alembic_version') IS NOT NULL")
+            ).scalar_one()
+            head = (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one_or_none()
+                if stamped
+                else None
+            )
         known = {rev.revision for rev in ScriptDirectory.from_config(config).walk_revisions()}
         if head is not None and head not in known:
             with reset_engine_.begin() as connection:
                 connection.execute(text("DROP SCHEMA public CASCADE"))
                 connection.execute(text("CREATE SCHEMA public"))
-        else:
+        elif stamped:
             command.downgrade(config, "base")
     finally:
         reset_engine_.dispose()

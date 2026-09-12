@@ -145,13 +145,151 @@ class RecordingPhrasingModel(PhrasingModel):
         return self.replies.pop(0)
 
 
+#: What the model is told it may do. Deliberately short and absolute.
+#:
+#: This prompt is **not** the guarantee — :func:`validate` is, and it runs on
+#: every reply whatever the prompt said. The prompt exists to make compliance
+#: the model's easiest path, not to be relied on. A layer whose safety rested
+#: on a model following instructions would have no safety at all.
+SYSTEM_PROMPT = """\
+You rewrite one sentence of triathlon race-plan copy to read more clearly.
+
+Rules, in order of importance:
+1. Never change, add, remove precision from, round, or derive a number. Every
+   digit in your reply must already appear in the input, exactly as written.
+   You may drop a number and refer to it in words instead.
+2. Keep the meaning identical. Do not add advice, caveats, or encouragement.
+3. Return one or two sentences of plain prose. No markdown, no preamble, no
+   quotation marks around the result, no explanation of what you changed.
+
+A reply that breaks rule 1 is discarded and the original is used, so inventing
+a figure helps nobody.\
+"""
+
+#: Sampling is off. The same sentence should rewrite the same way every time:
+#: a plan that reads differently on each reload looks like it is changing.
+TEMPERATURE = 0.0
+
+#: A rewrite cannot need more than this. The cap is also the second line of
+#: defence against a model that starts explaining itself — the length check in
+#: :func:`validate` is the first.
+MAX_OUTPUT_TOKENS = 300
+
+
+class HttpPhrasingModel(PhrasingModel):
+    """Any OpenAI-compatible ``/chat/completions`` endpoint, over httpx.
+
+    The HTTP call is written out rather than pulled in behind a vendor SDK, for
+    the same reasons the Stripe integration is: one call is needed, an SDK
+    brings its own retry and logging behaviour, and SDKs have a habit of
+    reading credentials out of the environment on import. Configuration is read
+    from :class:`Settings` and nowhere else, which is a rule here.
+
+    **Nothing in this class ever logs the key, the prompt or the reply.** The
+    deterministic text is athlete-derived copy, and a phrasing failure is a
+    cosmetic event that does not justify putting it in a log line.
+    """
+
+    def __init__(self, settings: Settings, client: Any | None = None) -> None:
+        self._settings = settings
+        self._client = client
+
+    def _http(self) -> Any:
+        if self._client is not None:
+            return self._client
+        import httpx
+
+        key = self._settings.phrasing_model_api_key.get_secret_value()
+        self._client = httpx.Client(
+            base_url=self._settings.phrasing_base_url.rstrip("/"),
+            timeout=self._settings.phrasing_timeout_ms / 1000.0,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+        )
+        return self._client
+
+    def rewrite(self, request: PhrasingRequest, settings: Settings) -> str:
+        """One call, one sentence back. Raises on anything unexpected.
+
+        Raising is the right shape: :func:`phrase` catches everything and
+        returns the deterministic text, so a provider outage degrades the
+        reading of a sentence and nothing else.
+        """
+        user_content = _user_prompt(request)
+        response = self._http().post(
+            "/chat/completions",
+            json={
+                "model": settings.phrasing_model_id,
+                "temperature": TEMPERATURE,
+                "max_tokens": MAX_OUTPUT_TOKENS,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+        )
+        if response.status_code >= 400:
+            # The status only. A provider error body can echo the request.
+            raise PhrasingUnavailableError(
+                f"phrasing provider returned HTTP {response.status_code}"
+            )
+
+        body = response.json()
+        try:
+            content = body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise PhrasingUnavailableError("phrasing provider returned an unusable body") from error
+        if not isinstance(content, str):
+            raise PhrasingUnavailableError("phrasing provider returned a non-string message")
+        return content.strip().strip('"')
+
+    def close(self) -> None:
+        if self._client is not None and hasattr(self._client, "close"):
+            self._client.close()
+
+
+def _user_prompt(request: PhrasingRequest) -> str:
+    """What the model actually sees.
+
+    The rendered sentence and a context label. **Not** the athlete's
+    constraints, not the solver's state, not anything it could compute with —
+    it is being asked to improve a reading, and giving it the inputs would be
+    inviting it to check the arithmetic.
+    """
+    lines = [f"Context: {request.context}", "", "Sentence:", request.deterministic_text]
+    if request.allowed_terms:
+        lines += ["", "Proper nouns you may use: " + ", ".join(request.allowed_terms)]
+    return "\n".join(lines)
+
+
+class PhrasingUnavailableError(RuntimeError):
+    """The provider could not be used. The caller falls back, as always."""
+
+
 _model: PhrasingModel | None = None
 
 
 def get_model(settings: Settings | None = None) -> PhrasingModel:
+    """The process-wide model, chosen by configuration.
+
+    Three conditions, all of which must hold before a request leaves this
+    process: phrasing is switched on, a model id is set, and a key is present.
+    Any of them missing yields :class:`DisabledPhrasingModel`, which returns
+    the deterministic text — a real implementation rather than a stub, because
+    with phrasing off every string is already correct and nothing degrades.
+    """
     global _model
     if _model is not None:
         return _model
+
+    if settings is not None and settings.phrasing_enabled:
+        key = settings.phrasing_model_api_key.get_secret_value().strip()
+        if key and settings.phrasing_model_id.strip():
+            _model = HttpPhrasingModel(settings)
+            return _model
+
     _model = DisabledPhrasingModel()
     return _model
 
@@ -245,4 +383,27 @@ def describe_boundary() -> dict[str, Any]:
             "is rejected."
         ),
         "on_failure": "The deterministic text is used. Phrasing is cosmetic.",
+        "prompt_is_not_the_guarantee": (
+            "The model is instructed not to touch a number, and the "
+            "instruction is not what stops it: validation runs on every reply "
+            "whatever the prompt said."
+        ),
+    }
+
+
+def describe_provider(settings: Settings) -> dict[str, Any]:
+    """Which model is live, for ``/readyz``. **Never the key.**
+
+    Reported so an operator can tell "phrasing is off" from "phrasing is on and
+    every call is failing", which otherwise look identical from the outside:
+    both return the deterministic text.
+    """
+    model = get_model(settings)
+    return {
+        "enabled": settings.phrasing_enabled,
+        "implementation": type(model).__name__,
+        "model_id": settings.phrasing_model_id or None,
+        "base_url": settings.phrasing_base_url if settings.phrasing_enabled else None,
+        "credential_present": bool(settings.phrasing_model_api_key.get_secret_value().strip()),
+        "timeout_ms": settings.phrasing_timeout_ms,
     }

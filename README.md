@@ -142,7 +142,7 @@ real key would be a broken test.
 
 ### The structural guarantees
 
-Three properties are guaranteed by construction, and each has a test that
+Four properties are guaranteed by construction, and each has a test that
 attempts the forbidden action through every path that exists:
 
 | Guarantee | Where it is tested |
@@ -150,6 +150,7 @@ attempts the forbidden action through every path that exists:
 | Nothing but the athlete can write a constraint — not a coach at full permission, not an admin, not a background job | `tests/integration/test_coach.py`, `test_constraints.py` |
 | No share scope exposes a constraint value or account data, including `full_plan` | `tests/integration/test_coach.py` |
 | The language model cannot influence a number | `tests/unit/test_phrasing_boundary.py` |
+| Athlete data is reachable only through a grant the athlete approved — the admin account screen is not a second door | `tests/integration/test_admin_accounts.py` |
 
 The second of those found a real leak during development: bag items carried
 the "Why this?" reason, and *"Swim leg planned at 1:56/100m"* is a constraint
@@ -160,26 +161,27 @@ inside every block.
 
 ## The API
 
-125 routes. `GET /api/v1/docs` is the live reference; the shape is:
+153 routes. `GET /api/v1/docs` is the live reference; the shape is:
 
 | Area | Routes |
 |---|---|
-| Auth and sessions | 9 |
+| Auth and sessions, including erasure | 13 |
 | Constraints and estimators | 4 |
-| Courses, bundles, free recon and cut-off calculator | 6 |
-| Races (enter, list, edit) | 5 |
+| Courses, bundles, free recon, conditions history, cut-off calculator | 8 |
+| Global search and help articles | 4 |
+| Races (enter, list, edit, forecast, race week) | 10 |
 | Athlete-submitted courses | 7 |
-| Plans, solving, versions | 10 |
+| Plans, solving, versions | 11 |
 | Drift | 4 |
 | Exports | 6 |
-| Billing, entitlements, invoices | 7 |
-| Dashboard, My Plans, notifications, push | 10 |
+| Billing, subscriptions, entitlements, invoices | 10 |
+| Dashboard, My Plans, season history, notifications, push | 11 |
 | Post-race and calibration | 6 |
-| Coach | 14 |
-| Sharing | 4 |
+| Coach | 19 |
+| Sharing | 5 |
 | Race Mode | 1 |
-| Admin and ops | 13 |
-| Support access | 5 |
+| Admin and ops | 19 |
+| Support access | 6 |
 | Internal jobs | 3 |
 | Health, docs, webhook | 6 |
 
@@ -201,6 +203,8 @@ called.
 | `kpi-snapshot` | `20 2 * * *` | Aggregate yesterday's KPIs from real rows |
 | `service-health` | `*/15 * * * *` | Probe each dependency |
 | `expire-support-grants` | `*/10 * * * *` | Close grants past their hour |
+| `subscription-renewal-notices` | `0 9 * * *` | Warn subscribers before a renewal charge |
+| `conditions-history-backfill` | `0 3 * * 0` | Fetch past race-day weather for announced editions |
 | `expire-share-links` | `5 * * * *` | Retire lapsed links |
 | `race-status-rollover` | `0 5 * * *` | Complete yesterday's races |
 | `notification-digest` | `0 8 * * 1` | Weekly digest, where there is something to say |

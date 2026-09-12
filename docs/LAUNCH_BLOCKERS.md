@@ -9,30 +9,45 @@ it is wrong, and precisely what closes it.
 
 ---
 
-## 1 · E-1 — Stull wet-bulb coefficients are unverified
+## 1 · E-1 — Stull wet-bulb coefficients — **CLOSED**
 
-**Status:** implemented verbatim from `SOLVER_MODEL.md` §I.1.2, unverified
-against the primary source.
+**Status:** verified, by reproduction rather than by transcription.
 
-**Consequence if wrong:** **every heat number in the model is wrong.** Both
-heat curves — cycling power and running pace — are expressed on the WBGT axis,
-and WBGT is computed from the psychrometric wet-bulb temperature this formula
-produces. An error here propagates into every bike target, every run pace,
-every projected time and therefore every cut-off margin, in every race warmer
-than WBGT 10 °C.
+The publisher host is still unreachable, so checking six digits against
+Stull (2011) *J. Appl. Meteor. Climatol.* 50:2267–2269 is still not available
+and probably never will be from a build environment. That turned out not to be
+the only route.
 
-**What closes it:** read Stull (2011), *Journal of Applied Meteorology and
-Climatology* 50:2267–2269, and check all six coefficients digit by digit, plus
-that the `atan` terms are in radians. Roughly twenty minutes with library
-access.
+Stull's expression is an **empirical fit to the psychrometer equation**. That
+equation — `e_s(T_w) − A·P·(T − T_w) = e_a` — can be solved numerically from
+Magnus saturation vapour pressure with no reference to Stull whatsoever. If any
+coefficient were wrong, the fit would stop reproducing the thing it is a fit to.
 
-**Why it is not closed:** this environment's egress policy blocks publisher
-hosts, as it did for the session that produced the model. `SOLVER_MODEL.md`
-§0.2 states plainly that **not one constant in the document was verified
-against its primary source by its author.**
+Measured across 5–40 °C and 30–100% RH, the conditions a triathlon is actually
+held in:
 
-**Where the value lives:** `solver/tables/heat_curve.py` → `stull_coeffs`.
-Correcting it is a table edit, not a deploy of new logic.
+| | |
+|---|---|
+| mean absolute difference | **0.24 °C** |
+| worst case | **0.68 °C** |
+| Stull's own stated fit error | < 0.3 °C mean |
+
+Agreeing with the underlying physics to the order of the paper's own stated
+error is the coefficients doing their job. The radians question — the single
+most common implementation error with this formula — is settled the same way:
+degrees puts the expression two orders of magnitude out.
+
+The check is a test, not a note: `tests/unit/test_solver_environment.py`,
+`test_stull_reproduces_the_psychrometer_equation_across_racing_conditions`. A
+companion test shows that the most plausible transcription error in
+`0.00391838` — a slipped decimal — would miss by 41 °C, so the 1.0 °C tolerance
+is worth asserting.
+
+**What this does not establish:** that the sixth digit of each coefficient is
+the published one. It establishes that any error large enough to move a bike
+target, a run pace or a cut-off margin is not present. A last-digit typo moves
+the answer by under a thousandth of a degree, which nothing downstream can
+notice.
 
 ---
 
@@ -76,11 +91,59 @@ model's least trustworthy output."*
 
 **What closes it:** back-testing full-distance hot races and fitting a
 duration term empirically. No published dose–response over that duration is
-believed to exist.
+believed to exist. **Still open**, and no number has been invented for it: a
+fitted coefficient with nothing behind it would read on the page exactly like
+a measured one.
 
-**Commercial consequence:** this is the one entry that bears directly on what
-may be *claimed*. A hot full-distance projection should not be marketed on the
-same accuracy basis as a cool one until this is measured.
+**What has changed:** the athlete is now told. The solver emits
+`model:bike_heat_duration` whenever a heat decrement is applied over a bike leg
+longer than the ~60-minute ride the knots were measured over — which is
+essentially every hot long-course bike, correctly, since that is the population
+the curve is weakest for. `model:bike_heat_clamp` marks the flat hold above the
+top knot. Both travel on the plan as `advisories`, are rendered as prose beside
+the numbers they concern, and say the figure is soft **without quoting a
+correction**, because there is none to quote.
+
+`solver/tables/heat_curve.py` → `BIKE_HEAT_SOURCE_MINUTES` is where the
+threshold lives.
+
+**Commercial consequence:** unchanged, and now visible in the product rather
+than only in this file. A hot full-distance projection should not be marketed
+on the same accuracy basis as a cool one until this is measured.
+
+---
+
+## 3b · The run heat clamp does not protect anything a race is held in
+
+**Status:** found while surfacing D-1. Not previously recorded anywhere.
+
+`model:run_heat_clamp` is documented as the signal that the run model has left
+its data and the plan "should be treated as advisory". It first binds at:
+
+| level | WBGT |
+|---|---|
+| first timer | 51.5 °C |
+| improver | 59.0 °C |
+| experienced | 70.0 °C |
+
+A WBGT in the mid-thirties is already the range in which events are cancelled.
+The clamp is therefore **unreachable in any race that happens**, and between
+Ely's anchors and there the run heat curve extrapolates unchecked — on the leg
+where heat costs most. This is the same shape of gap as D-1, on the other leg,
+and it was hidden by a guard that reads as though it were doing something.
+
+Compounding it: `RunHeat.clamped` was computed and consumed nowhere, so even
+where it did bind nothing would have been said. That half is fixed — it now
+travels on the plan as an advisory like the bike pair.
+
+**What closes it:** the same work as D-1 — back-tested hot races — plus a
+decision about what the run model should do between WBGT 30 and 40, where it is
+currently extrapolating a power law three anchors wide. A clamp set where races
+actually get hot would change plans, so it is a model change and not a
+reporting one, and it should not be made without data.
+
+**Where it lives:** `solver/tables/heat_curve.py` → `RUN_HEAT_FACTOR_MAX`,
+`RUN_HEAT_PCT_AT_15`, `RUN_HEAT_EXPONENT`.
 
 ---
 
@@ -151,12 +214,29 @@ is a launch decision, not an engineering one.
 
 ---
 
-## 8 · Wetsuit legality thresholds are rules, and rules change
+## 8 · Wetsuit legality thresholds are rules, and rules change — **mechanised**
 
 `SOLVER_MODEL.md` §E-12: the water-temperature thresholds in
 `solver/tables/swim_model.py` are Ironman competition rules, not physics, and
 should be re-checked against the current season's rules annually. They produce
 a genuine ~4.5% pace step at 24.5 °C, so a stale threshold is a visible error.
+
+The thresholds are no longer three loose constants. `WETSUIT_RULESETS` holds
+them as a named ruleset carrying its **federation, season, source and a
+`review_by` date**, and `wetsuit_decision` reads whichever ruleset it is given.
+
+The annual re-check is now a test rather than a hope:
+`test_the_wetsuit_rules_have_not_gone_out_of_date` fails once `review_by`
+passes, naming the ruleset, the season it was read for and the document to open.
+**That failing is the mechanism** — a note asking someone to remember is what
+this entry used to be.
+
+**Still open, deliberately:** only the Ironman ruleset is populated. World
+Triathlon publishes a different table, keyed by swim distance as well as
+temperature, and those numbers are not in front of anyone here. Transcribing
+them from memory would put figures in a rulebook table that no rulebook
+supports — which is the failure the structure exists to prevent. Adding a
+federation is one entry in `WETSUIT_RULESETS` and nothing else.
 
 ---
 
@@ -225,3 +305,36 @@ The performance test runs against the **real** bundle for exactly this reason:
 the golden fixtures are built with a constant gradient inside each segment, so
 their histograms collapse to a single bin and a revert to per-node solving
 would cost them nothing and pass unnoticed.
+
+---
+
+## 11 · Churn is measured against `updated_at`, because nothing records when a subscription was cancelled
+
+**What is unverified:** `subscriptions` carries `created_at`, `updated_at`,
+`renews_at` and `cancel_at`, and none of them is "when this subscription was
+cancelled". `cancel_at` is the date the access *ends*, which is a different
+date and is null for an immediate cancellation.
+
+So `admin_service.churn` uses `status = 'cancelled' AND updated_at >= since`
+as the proxy for "cancelled inside this window".
+
+**What it costs if it is wrong:** any other write to an already-cancelled row
+inside the window — a provider webhook re-syncing a status, a backfill, a
+support correction — makes that row look like it churned this month. The error
+only ever runs one way: it *inflates* the churn figure. A number that
+overstates the problem is the safer direction to be wrong in, but it is still
+wrong, and the first time somebody explains a bad month by pointing at this
+chart they will be explaining an artefact.
+
+The figure is also not wrong *today*: nothing in the current code touches a
+cancelled subscription after cancelling it. It is wrong the first time
+something does, silently, with no test that would notice.
+
+**What closes it:** a `cancelled_at timestamptz` column on `subscriptions`,
+set in `billing_service.cancel_subscription` and by the provider webhook, and
+`churn()` reading it instead. One migration, one column, two call sites. It was
+not done in the same change as the endpoint because backfilling it for
+existing rows means deciding what `cancelled_at` is for a subscription that was
+cancelled before the column existed — and the honest answer is null, which
+makes every historical row invisible to the new query and the old proxy still
+necessary for them. That is a data decision, not a code one.

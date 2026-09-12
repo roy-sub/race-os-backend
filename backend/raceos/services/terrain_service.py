@@ -472,9 +472,11 @@ def field_for(
     key = storage_key(course, bundle)
     storage = get_storage_backend(settings)
     try:
-        return json.loads(storage.get(key))
+        cached: dict[str, Any] = json.loads(storage.get(key))
     except (ObjectNotFoundError, ValueError):
         pass
+    else:
+        return cached
 
     source = elevation or TerrariumTiles(
         settings.elevation_tile_url,

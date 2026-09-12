@@ -75,6 +75,16 @@ class ConstraintSource(_StrEnum):
     TESTED = "tested"
     MANUAL = "manual"
     ESTIMATED = "estimated"
+    #: Brought in from a tool outside RaceOS — a bike-split modeller, a
+    #: coach's spreadsheet, a lab report.
+    #:
+    #: Distinct from ``MANUAL``, which was the nearest available stamp and is
+    #: wrong: manual means a person typed what they believe, imported means a
+    #: named external tool produced it. They age differently and they are
+    #: defended differently, and a drawer saying "manual" about a figure from
+    #: a bike-split modeller tells the athlete the wrong thing about their own
+    #: number. ``source_detail`` carries which tool.
+    IMPORTED = "imported"
 
 
 class BikePosition(_StrEnum):
@@ -178,6 +188,33 @@ class CourseVisibility(_StrEnum):
     #: Courses are retired rather than deleted because deleting one would
     #: orphan every plan an athlete already paid for.
     RETIRED = "retired"
+
+
+class CurationStatus(_StrEnum):
+    """Whether an athlete-submitted course has been reviewed into the catalogue.
+
+    A submitted course is usable by the athlete who submitted it from the
+    moment it builds — they added it to race it, and making them wait on a
+    queue to plan their own race would be a worse product for no safety gain,
+    because they are the only one who can see it.
+
+    What review decides is the *other* direction: whether everyone else sees
+    it too. The catalogue is the set of courses this system says are surveyed,
+    and that claim is the product. One unchecked GPX trace promoted into it
+    quietly makes every other row less trustworthy, because a reader cannot
+    tell which kind of row they are looking at.
+
+    ``REJECTED`` does not delete anything or take the course away from its
+    submitter. It records that it was looked at and not published, with a
+    reason, so the next reviewer does not start again from nothing.
+    """
+
+    #: Built, private to its submitter, not yet looked at.
+    UNREVIEWED = "unreviewed"
+    #: Reviewed and listed to everyone, like a house course.
+    PUBLISHED = "published"
+    #: Reviewed and not listed. Stays with its submitter, with a reason.
+    REJECTED = "rejected"
 
 
 class SubmissionStatus(_StrEnum):
@@ -422,18 +459,60 @@ class Currency(_StrEnum):
 
 
 class NotificationType(_StrEnum):
+    """Every kind of thing the system tells an athlete about.
+
+    Each one corresponds to an event the code actually produces. There is no
+    entry here for something a job might emit one day: an unreachable type
+    shows up in the preferences screen as a switch that governs nothing.
+    """
+
     DRIFT = "drift"
     WEEK = "week"
     CUTOFF = "cutoff"
     BUNDLE = "bundle"
     ANALYSIS = "analysis"
     DIGEST = "digest"
+    #: A plan built by a coach is waiting for the athlete to approve it. Not
+    #: "plan solved": a solve the athlete asked for finishes while they are
+    #: looking at it, and telling someone what they can already see is noise.
+    #: This one they cannot see, because somebody else did it.
+    PLAN_READY = "plan_ready"
+    #: A coach shared a plan or a link with this athlete.
+    COACH_SHARED = "coach_shared"
+    #: An athlete accepted a coach's invitation. The only coach-facing type.
+    ATHLETE_ACCEPTED = "athlete_accepted"
+    PAYMENT_SUCCEEDED = "payment_succeeded"
+    PAYMENT_FAILED = "payment_failed"
+    #: A subscription is about to renew. Sent before the charge, not after —
+    #: the point is the chance to cancel, which a receipt does not give.
+    SUBSCRIPTION_RENEWING = "subscription_renewing"
+    #: A support agent has asked to look at this account.
+    #:
+    #: Not on the original list of twelve, and added because it was being sent
+    #: as ``DIGEST``: an athlete who had switched the weekly digest off would
+    #: never have been told somebody asked to read their account. A privacy
+    #: notice that a convenience preference can mute is not a notice.
+    SUPPORT_ACCESS = "support_access"
+    #: A reviewer published or declined a course this athlete submitted.
+    COURSE_REVIEWED = "course_reviewed"
 
 
 #: Types whose in-app delivery cannot be switched off. The user chooses the
 #: channel; they do not choose whether a cut-off warning exists.
+#:
+#: ``PAYMENT_FAILED`` joins them for the same reason: an athlete whose card was
+#: declined loses access to things they believe they have paid for, and
+#: learning that from a locked screen instead of a message is the worst
+#: available version of it.
 CRITICAL_NOTIFICATION_TYPES: frozenset[NotificationType] = frozenset(
-    {NotificationType.DRIFT, NotificationType.CUTOFF}
+    {
+        NotificationType.DRIFT,
+        NotificationType.CUTOFF,
+        NotificationType.PAYMENT_FAILED,
+        # Somebody asking to read your account is not something you opt into
+        # hearing about.
+        NotificationType.SUPPORT_ACCESS,
+    }
 )
 
 

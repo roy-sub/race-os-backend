@@ -13,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from raceos.api.schemas.common import ResponseWarningOut
 from raceos.domain.enums import (
     BagKey,
     Feasibility,
@@ -29,6 +30,20 @@ def format_hm(minutes: float | None) -> str | None:
         return None
     total = int(round(minutes))
     return f"{total // 60}:{total % 60:02d}"
+
+
+def format_ms(minutes: float | None) -> str | None:
+    """`6.4` -> `"6:24"`. Minutes and seconds, for a duration under an hour.
+
+    Transitions are the only durations in a plan short enough that the seconds
+    matter: rendering 6.4 minutes through :func:`format_hm` gives ``"0:06"``,
+    which throws away the part an athlete standing in a transition tent is
+    actually counting.
+    """
+    if minutes is None:
+        return None
+    total_seconds = int(round(minutes * 60))
+    return f"{total_seconds // 60}:{total_seconds % 60:02d}"
 
 
 class PlanCreate(BaseModel):
@@ -176,6 +191,13 @@ class PlanSummary(BaseModel):
     goal_minutes: float | None
     projected_minutes: float | None
     projected_label: str | None = None
+    #: The two transitions, as solved. `None` on a draft, and on any plan
+    #: solved before they were stored — a guessed split would print with the
+    #: same authority as a solved one.
+    t1_minutes: float | None = None
+    t2_minutes: float | None = None
+    t1_label: str | None = None
+    t2_label: str | None = None
     feasibility: Feasibility
     worst_margin_minutes: float | None
     binding_constraint_key: str | None
@@ -185,6 +207,23 @@ class PlanSummary(BaseModel):
     shared: bool
     #: §F.6. Which optional inputs the solver had to assume.
     assumed_fields: list[str] = Field(default_factory=list)
+
+
+class AdvisoryOut(BaseModel):
+    """Where this plan sits outside the evidence behind its own model.
+
+    Distinct from ``assumed_fields``, which is about inputs the athlete did not
+    supply. Every input can be present and the answer still rest on ground the
+    data does not cover — a heat decrement applied over a leg far longer than
+    the hour it was measured over, a curve held flat above its top knot.
+
+    Says which numbers are soft, and never by how much: there is no correction
+    term to quote, and quoting one would be inventing it.
+    """
+
+    key: str
+    tag: str
+    text: str
 
 
 class PlanDetail(PlanSummary):
@@ -210,6 +249,15 @@ class PlanDetail(PlanSummary):
     bags: list[BagOut] = Field(default_factory=list)
     constraint_refs: list[ConstraintRefOut] = Field(default_factory=list)
     forecast_snapshot: dict[str, Any] = Field(default_factory=dict)
+    #: Caveats about the inputs this plan was solved from — a constraint that
+    #: has gone stale, an optional input the solver had to assume. They ride
+    #: alongside the plan rather than replacing it, because a plan built on an
+    #: ageing FTP is still the right plan to hand the athlete; it just needs
+    #: the caveat attached. Empty on a plan whose inputs are all current.
+    warnings: list[ResponseWarningOut] = Field(default_factory=list)
+    #: Model-range caveats from the solve that produced these numbers. Empty
+    #: for a plan solved wholly inside the data behind its curves.
+    advisories: list[AdvisoryOut] = Field(default_factory=list)
 
 
 class SolveJobOut(BaseModel):

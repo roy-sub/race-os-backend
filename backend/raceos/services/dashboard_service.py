@@ -58,6 +58,30 @@ class RaceCard:
     plan_id: UUID | None
     plan_version: int | None
     plan_status: str
+    #: The lifecycle status **as an athlete reads it**, folding in the facts a
+    #: state machine cannot hold.
+    #:
+    #: Three of the four extra states the spec asks for beyond the enum —
+    #: purchased, needs review, raced — are not lifecycle states, and adding
+    #: them to :class:`~raceos.domain.enums.PlanStatus` would be wrong: a plan
+    #: is not *either* active *or* needing review, it is routinely both, and
+    #: `uq_plans_one_active_per_race` depends on exactly one version being
+    #: `active`. They are facts about a plan, so they are derived here — once,
+    #: server-side, so the dashboard, My Plans and the coach board cannot
+    #: describe the same plan differently.
+    #:
+    #: **"Exported" is deliberately absent.** Nothing records that an export
+    #: happened: the endpoints generate files on demand and only the PDF's URL
+    #: is stored, and that is written when a PDF is *generated*, which is not
+    #: the same as an athlete having taken one. Reporting it from that column
+    #: would be a flag that reads as a fact and is a cache detail. Tracking it
+    #: properly is a table and a write on every download; it is not here
+    #: because nothing yet needs it badly enough to be worth being wrong about.
+    display_status: str
+    #: Whether a captured payment covers this race. A draft that has been paid
+    #: for reads as "draft, not solved" without this, which hides the one
+    #: thing the athlete has already done.
+    purchased: bool
     feasibility: str
     goal_minutes: float | None
     projected_minutes: float | None
@@ -154,6 +178,7 @@ def build_race_card(session: Session, *, race: Race, today: date | None = None) 
     drift = _pending_drift(session, plan.id) if plan is not None else None
     days_away = _days_away(race.event_date, day)
     action, href = _next_action(plan=plan, race_id=race.id, drift=drift, days_away=days_away)
+    purchased = _is_purchased(session, race=race)
 
     return RaceCard(
         race_id=race.id,
@@ -170,6 +195,10 @@ def build_race_card(session: Session, *, race: Race, today: date | None = None) 
         plan_id=plan.id if plan else None,
         plan_version=plan.version if plan else None,
         plan_status=plan.status.value if plan else "none",
+        display_status=_display_status(
+            plan=plan, drift=drift, purchased=purchased, event_date=race.event_date, today=day
+        ),
+        purchased=purchased,
         feasibility=(plan.feasibility if plan else Feasibility.NOT_SOLVED).value,
         goal_minutes=_number(plan.goal_minutes) if plan else None,
         projected_minutes=_number(plan.projected_minutes) if plan else None,
@@ -185,6 +214,50 @@ def build_race_card(session: Session, *, race: Race, today: date | None = None) 
         next_action=action,
         next_action_href=href,
     )
+
+
+def _is_purchased(session: Session, *, race: Race) -> bool:
+    """A captured payment covering this race, or a tier that includes it.
+
+    Scoped to the race rather than the plan, because a race can carry many
+    plan versions and the entitlement belongs to the race: a purchase against
+    version 1 still covers version 4 after three re-solves.
+    """
+    from raceos.services import billing_service
+
+    return billing_service.has_captured_purchase_for_race(
+        session, user_id=race.user_id, race_id=race.id
+    )
+
+
+def _display_status(
+    *,
+    plan: Plan | None,
+    drift: PlanDriftEvent | None,
+    purchased: bool,
+    event_date: date,
+    today: date,
+) -> str:
+    """One string, in the order a person cares about it.
+
+    Ordering matters more than the vocabulary: an athlete with a plan that has
+    both raced *and* drifted does not want to be told it needs review. The most
+    settled fact wins, then the most urgent.
+    """
+    # The date first, and before the no-plan case: a race that has happened has
+    # happened whether or not anybody planned it, and a card reading "no plan
+    # yet" about last May is describing a decision that can no longer be made.
+    if event_date < today or (plan is not None and plan.status is PlanStatus.PAST):
+        return "raced"
+    if plan is None:
+        return "purchased_not_started" if purchased else "none"
+    if plan.status is PlanStatus.PENDING_ATHLETE_APPROVAL:
+        return "pending_athlete_approval"
+    if plan.status is PlanStatus.DRAFT:
+        return "purchased_not_solved" if purchased else "draft"
+    if drift is not None:
+        return "needs_review"
+    return "active"
 
 
 def _number(value: object) -> float | None:

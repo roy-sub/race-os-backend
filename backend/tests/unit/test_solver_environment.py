@@ -14,6 +14,7 @@ against the specification, not merely different from last time.
 from __future__ import annotations
 
 import math
+from datetime import date
 
 import pytest
 
@@ -32,6 +33,7 @@ from raceos.solver.environment import (
 )
 from raceos.solver.tables import heat_curve as hc
 from raceos.solver.tables import physics as phys
+from raceos.solver.tables import swim_model as swim_tbl
 
 # ---------------------------------------------------------------------------
 # §I.1.2 — Stull wet-bulb temperature
@@ -64,6 +66,107 @@ def test_stull_atan_terms_are_in_radians() -> None:
     c1, c2, *_ = hc.STULL_COEFFS
     # The first term alone is ~1.31 rad; in degrees it would be ~75.
     assert math.atan(c1 * math.sqrt(55.0 + c2)) < math.pi / 2
+
+
+# ---------------------------------------------------------------------------
+# §I.1.2 — Stull, checked against the physics it approximates
+#
+# `LAUNCH_BLOCKERS.md` E-1 called these six coefficients unverified, because
+# the environment that produced them could not reach the publisher and neither
+# can this one. Checking them digit by digit against the paper is therefore not
+# available.
+#
+# What *is* available is better than transcription-checking: Stull's formula is
+# an empirical fit to the psychrometer equation, and that equation can be
+# solved numerically from Magnus saturation vapour pressure with no reference
+# to Stull at all. If a coefficient were wrong, the fit would stop reproducing
+# the thing it is a fit to.
+# ---------------------------------------------------------------------------
+
+
+def _saturation_vapour_pressure_hpa(temp_c: float) -> float:
+    """Magnus-Tetens. Independent of anything in `heat_curve`."""
+    return 6.112 * math.exp(17.67 * temp_c / (temp_c + 243.5))
+
+
+def _psychrometric_wet_bulb(temp_c: float, humidity_pct: float) -> float:
+    """Wet-bulb from the psychrometer equation, by bisection.
+
+    ``e_s(T_w) - A * P * (T - T_w) = e_a``, with the ventilated-psychrometer
+    coefficient and standard sea-level pressure. Deliberately slow and
+    obvious: this is the reference, so it should be readable rather than
+    clever.
+    """
+    coefficient = 6.66e-4
+    pressure_hpa = 1013.25
+    actual = humidity_pct / 100.0 * _saturation_vapour_pressure_hpa(temp_c)
+
+    low, high = -30.0, temp_c
+    for _ in range(200):
+        middle = (low + high) / 2.0
+        if (
+            _saturation_vapour_pressure_hpa(middle) - coefficient * pressure_hpa * (temp_c - middle)
+            < actual
+        ):
+            low = middle
+        else:
+            high = middle
+    return (low + high) / 2.0
+
+
+#: Conditions a triathlon is actually held in. The coefficients are checked
+#: here rather than over Stull's whole stated validity band, because the band's
+#: cold-dry corner is both where his fit is weakest and where no race happens —
+#: holding the model to a tolerance there would say nothing about any plan.
+RACING_ENVELOPE = [
+    (temp_c, humidity) for temp_c in range(5, 41, 5) for humidity in range(30, 101, 10)
+]
+
+
+def test_stull_reproduces_the_psychrometer_equation_across_racing_conditions() -> None:
+    """The verification E-1 asks for, by the route that is open to us.
+
+    Measured: mean absolute difference 0.24 °C, worst 0.68 °C, over 5-40 °C and
+    30-100% RH. Stull states a mean absolute error under 0.3 °C for the fit, so
+    agreeing with the underlying physics to that order is the coefficients
+    doing their job.
+
+    The tolerance is 1.0 °C rather than 0.7 so that ordinary disagreement
+    between two approximations does not fail the build. It is still far tighter
+    than any transcription error survives — see the test below.
+    """
+    worst = 0.0
+    for temp_c, humidity in RACING_ENVELOPE:
+        difference = abs(
+            wet_bulb_temp(temp_c, humidity) - _psychrometric_wet_bulb(temp_c, humidity)
+        )
+        worst = max(worst, difference)
+    assert worst < 1.0, f"worst disagreement {worst:.3f} °C"
+
+
+def test_a_misplaced_decimal_in_a_coefficient_would_fail_that_check() -> None:
+    """The tolerance above has to be tight enough to be worth asserting.
+
+    A decimal-place slip in the RH^1.5 coefficient — the most plausible
+    transcription error in a number written `0.00391838` — puts the formula
+    41 °C out. Degrees instead of radians is worse still, by two orders of
+    magnitude. Both are caught with room to spare.
+    """
+    c1, c2, c3, c4, c5, c6 = hc.STULL_COEFFS
+
+    def with_slipped_decimal(temp_c: float, humidity: float) -> float:
+        return (
+            temp_c * math.atan(c1 * math.sqrt(humidity + c2))
+            + math.atan(temp_c + humidity)
+            - math.atan(humidity - c3)
+            + (c4 * 10) * humidity**hc.STULL_RH_EXPONENT * math.atan(c5 * humidity)
+            - c6
+        )
+
+    reference = _psychrometric_wet_bulb(30.0, 70.0)
+    assert abs(with_slipped_decimal(30.0, 70.0) - reference) > 10.0
+    # And the correct coefficients are nowhere near that.
+    assert abs(wet_bulb_temp(30.0, 70.0) - reference) < 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -361,3 +464,106 @@ def test_speed_solve_is_bit_identical_across_repeats() -> None:
     first = solve_speed(165.415, **args)
     for _ in range(20):
         assert solve_speed(165.415, **args) == first
+
+
+# ---------------------------------------------------------------------------
+# §D-1 — where a plan sits outside the evidence behind its own curves
+#
+# `RunHeat.clamped` has been computed since the environment model was written
+# and consumed nowhere. `SOLVER_MODEL.md` says such a plan "should be treated
+# as advisory"; until now no athlete was ever told. These pin the three
+# conditions that raise one.
+# ---------------------------------------------------------------------------
+
+
+def test_the_bike_heat_curve_knows_how_long_its_source_ride_was() -> None:
+    """Peiffer's protocol is a 40 km time trial — about an hour. Every bike leg
+    we sell is far longer, and that is the whole of D-1."""
+    assert hc.BIKE_HEAT_SOURCE_MINUTES == 60.0
+
+
+def test_a_cool_ride_raises_no_heat_advisory_however_long_it_is() -> None:
+    """Below the reference knot there is no decrement, so there is nothing
+    resting on a duration the data does not cover."""
+    reference_wbgt = hc.BIKE_HEAT_KNOTS[1][0]
+    assert bike_heat_factor(reference_wbgt) == pytest.approx(1.0)
+    assert bike_heat_factor(reference_wbgt - 2.0) >= 1.0
+
+
+def test_above_the_top_knot_the_bike_factor_is_held_not_extrapolated() -> None:
+    """A deliberate refusal, and it errs optimistic — which is why it is worth
+    telling the athlete about rather than only commenting."""
+    top_wbgt, top_factor = hc.BIKE_HEAT_KNOTS[-1]
+    assert bike_heat_factor(top_wbgt + 10.0) == pytest.approx(top_factor)
+
+
+def test_the_run_heat_clamp_binds_only_far_outside_reachable_conditions() -> None:
+    """A finding worth writing down, not a bug being papered over.
+
+    `model:run_heat_clamp` is documented as the signal that a plan has left the
+    data and should be treated as advisory. It first binds at **WBGT 51.5** for
+    a first-timer, and higher for everyone else — far above anything a race is
+    held in, since a WBGT in the mid-thirties is already the range events get
+    cancelled in.
+
+    So the clamp is not protecting the run model across any condition an
+    athlete will meet: between the anchors and there, the curve extrapolates
+    unchecked. That is the same shape of gap D-1 names on the bike, on the leg
+    where heat costs most, and it is recorded in `LAUNCH_BLOCKERS.md` rather
+    than left as a surprise for whoever reads a hot projection.
+
+    What this test pins is that the clamp still works where it applies, and
+    that nothing in a realistic race reaches it.
+    """
+    hottest_plausible = run_heat_factor(35.0, AthleteLevel.FIRST)
+    assert hottest_plausible.clamped is False, (
+        "a clamp that bound in ordinary racing heat would change this model's "
+        "behaviour, not just its reporting"
+    )
+
+    beyond_earth = run_heat_factor(60.0, AthleteLevel.FIRST)
+    assert beyond_earth.clamped is True
+    assert beyond_earth.factor == pytest.approx(hc.RUN_HEAT_FACTOR_MAX)
+
+
+# ---------------------------------------------------------------------------
+# §E-12 — wetsuit legality is rules, not physics
+# ---------------------------------------------------------------------------
+
+
+def test_every_wetsuit_ruleset_states_where_it_came_from() -> None:
+    """A threshold with no source cannot be re-checked, which is how a rulebook
+    table goes quietly out of date."""
+    for name, rules in swim_tbl.WETSUIT_RULESETS.items():
+        assert rules.source, f"{name} has no source"
+        assert rules.federation, f"{name} has no federation"
+        assert rules.season >= 2024, f"{name} has an implausible season"
+        assert rules.mandatory_below_c < rules.legal_max_c < rules.non_award_max_c
+
+
+def test_an_unknown_federation_falls_back_rather_than_refusing_to_solve() -> None:
+    """A bundle naming rules this build has not been taught should still
+    produce a plan, under thresholds that are stated."""
+    assert swim_tbl.wetsuit_ruleset("world-triathlon").federation == "Ironman"
+    assert swim_tbl.wetsuit_ruleset(None).federation == "Ironman"
+
+
+def test_the_wetsuit_rules_have_not_gone_out_of_date() -> None:
+    """**This failing is the point.**
+
+    Competition rules change annually and nothing in a back-test can detect it.
+    When this goes red, a season has turned over and nobody has confirmed the
+    numbers: open the source named on the ruleset, check the three thresholds,
+    and move `season` and `review_by` forward — or correct the values.
+    """
+    today = date.today()
+    stale = [
+        f"{name} ({rules.federation} {rules.season}, review by "
+        f"{rules.review_by.isoformat()}, source: {rules.source})"
+        for name, rules in swim_tbl.WETSUIT_RULESETS.items()
+        if rules.review_by <= today
+    ]
+    assert not stale, (
+        "wetsuit rulesets are due a re-check against the current season's "
+        f"rulebook: {'; '.join(stale)}"
+    )

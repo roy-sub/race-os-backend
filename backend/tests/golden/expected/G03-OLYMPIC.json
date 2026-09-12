@@ -2,6 +2,9 @@
   "case_id": "G03-OLYMPIC",
   "course_id": "C-OLY",
   "output": {
+    "advisories": [
+      "model:bike_heat_duration"
+    ],
     "aid_actions": [
       {
         "action_text": "Take 51 g carb, 1000 ml fluid, 1500 mg sodium per hour.",
@@ -377,6 +380,8 @@
         "unit": "/km"
       }
     ],
+    "t1_minutes": "3.6",
+    "t2_minutes": "1.2",
     "wetsuit_used": true,
     "wetsuit_warning": false,
     "worst_margin_minutes": "28.0"

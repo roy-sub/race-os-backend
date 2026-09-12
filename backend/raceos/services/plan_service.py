@@ -33,7 +33,15 @@ from shapely.geometry import LineString
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from raceos.api.errors import Conflict, Forbidden, Infeasible, InfeasibleDetails, NotFound
+from raceos.api.errors import (
+    Conflict,
+    ErrorCode,
+    Forbidden,
+    Infeasible,
+    InfeasibleDetails,
+    NotFound,
+    WarningCollector,
+)
 from raceos.config import Settings
 from raceos.db.models import (
     Constraint,
@@ -57,10 +65,13 @@ from raceos.db.models import (
 from raceos.domain.enums import (
     CONSTRAINT_KEYS,
     Feasibility,
+    NotificationSeverity,
+    NotificationType,
     PlanStatus,
     RiskLevel,
 )
 from raceos.logging import get_logger
+from raceos.services import constraint_service
 from raceos.solver.adapters import from_pipeline_bundle
 from raceos.solver.errors import MissingConstraint
 from raceos.solver.models import (
@@ -425,6 +436,7 @@ def solve_plan(
         request=request,
         output=output,
         input_hash=input_hash,
+        settings=settings,
     )
     _record_timing(session, solved, duration_ms, settings)
     session.flush()
@@ -469,6 +481,7 @@ def _persist(
     request: SolveInput,
     output: SolveOutput,
     input_hash: str,
+    settings: Settings,
 ) -> Plan:
     """Insert a new version and supersede the previous active one."""
     previous = session.scalar(
@@ -508,10 +521,13 @@ def _persist(
     solved.solved_at = _now()
     solved.solve_input_hash = input_hash
     solved.projected_minutes = output.projected_minutes
+    solved.t1_minutes = output.t1_minutes
+    solved.t2_minutes = output.t2_minutes
     solved.feasibility = output.feasibility
     solved.worst_margin_minutes = output.worst_margin_minutes
     solved.binding_constraint_key = output.binding_constraint_key
     solved.assumed_fields = list(output.assumed_fields)
+    solved.advisories = list(output.advisories)
     solved.constraints_snapshot = {
         **(solved.constraints_snapshot or {}),
         "constraints": [
@@ -534,6 +550,9 @@ def _persist(
 
     _replace_children(session, solved, output)
     session.flush()
+
+    if solved.status is PlanStatus.PENDING_ATHLETE_APPROVAL:
+        _notify_plan_ready(session, plan=solved, settings=settings)
     return solved
 
 
@@ -728,6 +747,46 @@ def record_override(
     return event
 
 
+def _notify_plan_ready(session: Session, *, plan: Plan, settings: Settings) -> None:
+    """Tell the athlete a coach built them a plan.
+
+    The one case where a solve finishing is worth a notification. A solve the
+    athlete asked for finishes while they are looking at the screen, so telling
+    them about it is noise; this one happened without them, and the plan sits
+    in ``pending_athlete_approval`` doing nothing until they act on it.
+
+    Failure here never fails the solve. The plan is saved and the athlete has
+    it; a notification that did not send is a smaller problem than a solve that
+    was rolled back for it.
+    """
+    from raceos.services import notification_service
+
+    athlete = session.get(User, plan.user_id)
+    if athlete is None:  # pragma: no cover - FK RESTRICT
+        return
+    coach = session.get(User, plan.built_by_coach_id) if plan.built_by_coach_id else None
+    try:
+        notification_service.notify(
+            session,
+            user=athlete,
+            settings=settings,
+            type_key=NotificationType.PLAN_READY,
+            severity=NotificationSeverity.INFO,
+            title=f"{coach.name if coach and coach.name else 'Your coach'} built you a plan.",
+            body=(
+                "It is not live until you approve it. Read it first — every "
+                "number shows the constraint it came from."
+            ),
+            tag="PLAN READY",
+            race_id=plan.race_id,
+            plan_id=plan.id,
+            cta_label="Review the plan",
+            cta_href=f"/plan?plan={plan.id}",
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("plan_ready notification failed", extra={"plan_id": str(plan.id)})
+
+
 def mark_built_by_coach(session: Session, *, plan: Plan, coach: User) -> Plan:
     """Stamp the plan before it is solved.
 
@@ -771,6 +830,57 @@ def get_plan(session: Session, *, plan_id: UUID, user: User) -> Plan:
         raise NotFound("Plan not found.")
     require_owner(plan, user)
     return plan
+
+
+def attach_input_warnings(
+    session: Session,
+    *,
+    plan: Plan,
+    warnings: WarningCollector,
+    settings: Settings,
+) -> None:
+    """The caveats *this plan's own inputs* carry.
+
+    Two of them, and they are the only two warning codes the taxonomy has:
+
+    ``STALE_DATA``
+        A constraint the solve actually read has aged past its testing
+        interval. Scoped to the plan's own ``plan_constraint_refs`` rather
+        than to everything the athlete has ever measured — a stale swim pace
+        is not a caveat on a plan that never consulted it, and warning about
+        it would train people to ignore the warnings that do matter.
+
+    ``PARTIAL_DATA``
+        The plan was solved with **no forecast at all**, so every number the
+        environment model produced rests on the neutral defaults in
+        :func:`build_forecast_snapshot` rather than on this race day.
+
+        Deliberately not emitted per entry in ``assumed_fields``: those are
+        single optional inputs, they are already returned on the plan, and the
+        screen marks the individual numbers that rested on them. Saying the
+        same thing twice in two registers is how a warnings array becomes
+        something people learn to dismiss. A missing forecast is the different
+        and larger case — nothing else on the plan reveals it.
+
+    Neither replaces the plan. Both ride alongside it.
+    """
+    referenced = set(
+        session.scalars(select(PlanConstraintRef.key).where(PlanConstraintRef.plan_id == plan.id))
+    )
+    owned = constraint_service.list_constraints(session, athlete_id=plan.user_id)
+    # An unsolved draft has no refs yet, so there is nothing to scope to and
+    # every constraint is a candidate input.
+    relevant = [row for row in owned if not referenced or row.key in referenced]
+    constraint_service.attach_staleness_warnings(relevant, warnings, settings)
+
+    if plan.solved_at is not None and not plan.forecast_snapshot:
+        warnings.add(
+            ErrorCode.PARTIAL_DATA,
+            "No forecast was available when this plan was solved, so its heat, "
+            "wind and water numbers rest on mild defaults rather than on your "
+            "race day. Re-solve once the forecast lands.",
+            "forecast",
+        )
 
 
 def list_plans(session: Session, *, user: User) -> list[Plan]:

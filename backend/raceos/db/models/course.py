@@ -42,6 +42,7 @@ from raceos.domain.enums import (
     BundleStatus,
     CourseAvailability,
     CourseVisibility,
+    CurationStatus,
     Difficulty,
     DistanceType,
     Leg,
@@ -120,6 +121,24 @@ class Course(Entity):
     submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
     )
+    #: Whether a submitted course has been reviewed into the shared catalogue.
+    #:
+    #: Meaningless while :attr:`submitted_by_user_id` is null — a house course
+    #: is in the catalogue by construction and has nothing to review — which
+    #: is why the default is ``UNREVIEWED`` rather than ``PUBLISHED``: it says
+    #: "no review has happened", which is true of both.
+    curation_status: Mapped[CurationStatus] = mapped_column(
+        pg_enum(CurationStatus, "curation_status"),
+        nullable=False,
+        default=CurationStatus.UNREVIEWED,
+        server_default=text("'unreviewed'"),
+    )
+    #: Why a reviewer published or rejected it, in the submitter's terms.
+    curation_note: Mapped[str | None] = mapped_column(Text)
+    curated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    curated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     bundles: Mapped[list[CourseBundle]] = relationship(back_populates="course")
 
@@ -127,6 +146,7 @@ class Course(Entity):
         Index("ix_courses_distance_type", "distance_type"),
         Index("ix_courses_visibility", "visibility"),
         Index("ix_courses_submitted_by_user_id", "submitted_by_user_id"),
+        Index("ix_courses_curation_status", "curation_status"),
         CheckConstraint("lat BETWEEN -90 AND 90", name="courses_lat_range"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="courses_lng_range"),
     )
@@ -397,4 +417,106 @@ class CourseSubmission(Entity):
         Index("ix_course_submissions_status", "status"),
         CheckConstraint("lat BETWEEN -90 AND 90", name="course_submissions_lat_range"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="course_submissions_lng_range"),
+    )
+
+
+class RaceWeekTask(Entity):
+    """One dated, checkable thing to do before a race.
+
+    **Generated and personal in the same table.** The four or five items every
+    race has are derived from the event date (see
+    :data:`~raceos.exports.files.RACE_WEEK_ITEMS`) and written once per race;
+    anything the athlete adds sits beside them. Two tables would mean two
+    queries, two orderings and two ways to tick something off, for a
+    distinction the athlete does not have — to them it is one list.
+
+    ``key`` is what makes regeneration safe. It is stable across a rebuild, so
+    a task already ticked off stays ticked; the title and the date are not,
+    because a course can be re-dated and the copy can be edited.
+    """
+
+    __tablename__ = "race_week_tasks"
+
+    race_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("races.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Denormalised from the race so a listing is one query and ownership is
+    #: checkable without a join.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Stable identity. Generated items use their derivation's key; an
+    #: athlete's own uses a generated one.
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: False for anything the athlete added. Only generated rows are rebuilt
+    #: when a race is re-dated, so a personal task is never silently moved.
+    generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("race_id", "key", name="uq_race_week_tasks_race_id_key"),
+        Index("ix_race_week_tasks_user_id", "user_id"),
+        Index("ix_race_week_tasks_race_id_due_date", "race_id", "due_date"),
+    )
+
+
+class CourseConditionsHistory(Entity):
+    """What race day was actually like, one row per past edition.
+
+    **Observed, not modelled and not invented.** Every value here is
+    reanalysis from the weather archive for this course's coordinates on this
+    date. The prototype's conditions panel quoted a median air temperature, a
+    wetsuit likelihood and a finish-time distribution, and none of the three
+    was backed by anything — they were written to look like data.
+
+    ``water_temp_c`` is nullable and frequently null, deliberately. Sea-surface
+    temperature is available for a coastal swim and not for a lake, and a lake
+    course guessing at its own water temperature would be the invented number
+    all over again. Where it is absent, the wetsuit likelihood is absent too
+    rather than estimated from air temperature.
+
+    There is no finish-time column. That needs actual results, which this
+    system does not have and cannot obtain, so the recon page says so instead
+    of drawing a distribution.
+    """
+
+    __tablename__ = "course_conditions_history"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False
+    )
+    #: The date observed. Usually a past edition's race day; where the exact
+    #: date is unknown it is the same calendar day in that year, which is what
+    #: "what is it like then" actually asks.
+    observed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    #: Local hour the observation is for — the race's start hour, so a 07:00
+    #: start is not described by an afternoon high.
+    observed_hour: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    air_temp_c: Mapped[float] = mapped_column(Numeric, nullable=False)
+    humidity_pct: Mapped[float] = mapped_column(Numeric, nullable=False)
+    wind_speed_ms: Mapped[float] = mapped_column(Numeric, nullable=False)
+    wind_dir_deg: Mapped[float | None] = mapped_column(Numeric)
+    precipitation_mm: Mapped[float | None] = mapped_column(Numeric)
+    cloud_cover_pct: Mapped[float | None] = mapped_column(Numeric)
+    #: Null for any course whose swim the marine archive does not cover.
+    water_temp_c: Mapped[float | None] = mapped_column(Numeric)
+
+    #: Which archive this came from, so a row can be traced and re-fetched.
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id", "observed_on", name="uq_course_conditions_history_course_date"
+        ),
+        Index("ix_course_conditions_history_course_id", "course_id"),
+        CheckConstraint(
+            "observed_hour BETWEEN 0 AND 23", name="course_conditions_history_hour_valid"
+        ),
     )

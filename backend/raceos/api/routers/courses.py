@@ -19,11 +19,14 @@ from raceos.api.errors import NotFound, PaymentRequired
 from raceos.api.schemas.course import (
     BundleDetail,
     BundleHistoryEntry,
+    ConditionsHistoryOut,
+    ConditionsObservationOut,
+    ConditionsSummaryOut,
     CourseDetail,
     Page,
 )
 from raceos.domain.enums import DistanceType
-from raceos.services import course_service, terrain_service
+from raceos.services import conditions_service, course_service, terrain_service
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
@@ -75,6 +78,41 @@ def get_bundle(course_ref: str, session: DbSession, response: Response) -> Bundl
     # client can revalidate cheaply at race-mode check-in.
     response.headers["ETag"] = f'"{bundle.id}:{bundle.version}"'
     return bundle
+
+
+@router.get("/{course_ref}/conditions-history", summary="What race day has actually been like")
+def get_conditions_history(
+    course_ref: str, session: DbSession, settings: Config, viewer: OptionalUser
+) -> ConditionsHistoryOut:
+    """Public, like the rest of recon. **Observed, never modelled.**
+
+    Every figure is reanalysis from the weather archive for this course's own
+    coordinates, at the race's own start hour, on the day the race was held.
+    Where a value is unavailable it is absent: a lake course has no
+    sea-surface temperature, so it has no water temperature and therefore no
+    wetsuit likelihood, rather than one inferred from the air.
+
+    There is no finish-time distribution. It needs actual results, which this
+    system does not have and cannot obtain, and the prototype's was drawn.
+    """
+    course = course_service.load_visible_course(session, course_ref, viewer)
+    rows = conditions_service.history_for(session, course=course)
+    summary = conditions_service.summarise(rows)
+
+    empty_reason: str | None = None
+    if not rows:
+        empty_reason = (
+            "no_edition_date" if course.next_edition_date is None else "not_collected_yet"
+        )
+
+    return ConditionsHistoryOut(
+        course_slug=course.slug,
+        course_name=course.name,
+        summary=ConditionsSummaryOut.model_validate(summary),
+        observations=[ConditionsObservationOut.model_validate(row) for row in rows],
+        finish_times_available=False,
+        empty_reason=empty_reason,
+    )
 
 
 @router.get("/{course_ref}/bundle/history", summary="Version list with changelogs")

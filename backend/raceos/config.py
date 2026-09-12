@@ -219,6 +219,10 @@ class Settings(BaseSettings):
     # Weather — Open-Meteo. No API key exists for this provider.
     # ------------------------------------------------------------------
     open_meteo_base_url: str = "https://api.open-meteo.com/v1"
+    #: The historical archive. A separate host from the forecast API, and
+    #: separate because it is: reanalysis of what happened, not a model of what
+    #: will. Same vendor, same absence of an API key.
+    open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1"
     weather_forecast_horizon_hours: int = Field(default=72, ge=1, le=384)
     weather_request_timeout_seconds: int = Field(default=15, ge=1, le=120)
     forecast_cache_ttl_minutes: int = Field(default=180, ge=1, le=1_440)
@@ -262,6 +266,11 @@ class Settings(BaseSettings):
     phrasing_timeout_ms: int = Field(default=2_500, ge=100, le=60_000)
     phrasing_model_id: str = ""
     phrasing_model_api_key: SecretStr = SecretStr("")
+    #: Any OpenAI-compatible ``/chat/completions`` endpoint. A base URL rather
+    #: than a provider name, because the wire format is the only thing the
+    #: adapter depends on and hardcoding one vendor's host would mean a code
+    #: change to move.
+    phrasing_base_url: str = "https://api.openai.com/v1"
 
     # ------------------------------------------------------------------
     # Email — subsystem built, transport no-op in V1

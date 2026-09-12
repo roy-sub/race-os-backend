@@ -84,3 +84,33 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class ErasureImpactOut(BaseModel):
+    """What deleting this account would destroy, in this account's own numbers.
+
+    Returned before the deletion so the confirmation screen states facts rather
+    than a generic warning — "4 plans and 2 invoices" is a different decision
+    from "0 and 0".
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    plans: int
+    races: int
+    invoices: int
+    #: A live agreement has to be cancelled first. Erasing the account would
+    #: otherwise leave a subscription billing a customer who does not exist.
+    active_subscription: bool
+    coach_links: int
+
+
+class ErasureRequest(BaseModel):
+    """A typed confirmation, not a boolean.
+
+    A boolean can be sent by a mis-wired client. This cannot be undone, so the
+    caller has to send back the exact words.
+    """
+
+    confirmation: str = Field(description="Must be exactly 'DELETE MY ACCOUNT'", max_length=64)
+    reason: str | None = Field(default=None, max_length=500)

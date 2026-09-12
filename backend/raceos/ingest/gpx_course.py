@@ -270,8 +270,9 @@ def resample(
             out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
             travelled += spacing_m
         carry = (carry + span) % spacing_m
-    if out[-1] != tuple(points[-1]):
-        out.append(tuple(points[-1]))
+    last = (points[-1][0], points[-1][1])
+    if out[-1] != last:
+        out.append(last)
     return out
 
 
@@ -464,8 +465,10 @@ def build_segments(leg: BuiltLeg, start_ordinal: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def build_aid_stations(leg_km: dict[Leg, float], distance_type: DistanceType) -> list[dict]:
-    out: list[dict] = []
+def build_aid_stations(
+    leg_km: dict[Leg, float], distance_type: DistanceType
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for leg in (Leg.BIKE, Leg.RUN):
         rule = AID_SPACING[distance_type].get(leg)
         if rule is None:
@@ -492,9 +495,9 @@ def build_aid_stations(leg_km: dict[Leg, float], distance_type: DistanceType) ->
 def build_waypoints(
     leg_km: dict[Leg, float],
     distance_type: DistanceType,
-    aid_stations: Sequence[dict],
-) -> list[dict]:
-    out: list[dict] = [
+    aid_stations: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = [
         {
             "type": "transition",
             "leg": Leg.BIKE.value,
@@ -555,7 +558,7 @@ def build_barriers(
     leg_km: dict[Leg, float],
     distance_type: DistanceType,
     generosity: float = 1.0,
-) -> tuple[list[dict], dict[str, float]]:
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
     """The cut-off ladder, minutes from the athlete's start.
 
     Monotonic by construction and scaled from one reference ladder, because a
@@ -568,7 +571,7 @@ def build_barriers(
     bike_cutoff = reference["bike_cutoff"] * generosity
     finish = reference["finish"] * generosity
 
-    barriers: list[dict] = [
+    barriers: list[dict[str, Any]] = [
         {
             "name": "swim_exit",
             "leg": Leg.SWIM.value,

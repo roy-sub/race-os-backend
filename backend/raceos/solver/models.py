@@ -374,6 +374,18 @@ class SolveOutput:
     feasibility: Feasibility
     projected_minutes: float
     splits: tuple[Split, ...]
+    #: The two transitions, in minutes, as solved.
+    #:
+    #: Returned rather than left to be recovered by subtracting the three leg
+    #: splits from ``projected_minutes``: that subtraction yields the *total*
+    #: transition time and cannot separate T1 from T2, and T1 is the one that
+    #: carries the wetsuit strip. They are not ``Split`` rows because a
+    #: transition is not a leg the solver paces — it has no distance, no
+    #: target and no unit, and widening :class:`~raceos.domain.enums.Leg` to
+    #: hold them would put ``T1`` in front of every segment, gate, aid action
+    #: and bag rule that reads that enum.
+    t1_minutes: float
+    t2_minutes: float
     segments: tuple[Segment, ...]
     gates: tuple[Gate, ...]
     fuelling: Fuelling
@@ -388,6 +400,16 @@ class SolveOutput:
     #: which the solver substituted a documented default. Sorted
     #: lexicographically so it is deterministic and diffable in golden files.
     assumed_fields: tuple[str, ...]
+    #: Sorted `model:` keys naming where this plan sits **outside its own
+    #: evidence** — a heat decrement applied over a leg far longer than the
+    #: hour it was measured over, or a curve held flat above its top knot
+    #: rather than extrapolated.
+    #:
+    #: Distinct from ``assumed_fields``, which is about inputs the athlete did
+    #: not supply. This is about the model's own range: every input was
+    #: present and the answer still rests on ground the data does not cover.
+    #: Neither changes a number; both say which numbers are soft.
+    advisories: tuple[str, ...] = ()
     infeasibility: Infeasibility | None = None
     stage_timings_ms: dict[str, int] = field(default_factory=dict)
     #: Set when the wetsuit is legal but not award-eligible (§4.4.3).

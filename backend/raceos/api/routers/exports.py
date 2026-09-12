@@ -21,6 +21,7 @@ from fastapi import APIRouter, Query, Response
 from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.errors import ServiceUnavailable
 from raceos.api.serialise import plan_detail
+from raceos.db.models import User
 from raceos.domain.entitlements import EntitlementAction
 from raceos.domain.enums import Leg
 from raceos.exports import files, pdf
@@ -92,6 +93,38 @@ def list_exports(
     }
 
 
+def _branding_allowed(
+    session: DbSession,
+    context: export_service.ExportContext,
+    settings: Config,
+    requested: bool,
+) -> bool:
+    """Whether this export may carry a coach's mark.
+
+    The entitlement is checked against **the coach who built the plan**, not
+    against the athlete downloading it — the athlete is not the one who bought
+    white-label, and requiring them to hold it would make a coach's branded
+    plan un-downloadable by the person it was built for.
+
+    A coach whose subscription has lapsed stops branding new exports. The plan
+    itself is unaffected: it was paid for and it stays theirs.
+    """
+    if not requested:
+        return False
+    coach_id = context.plan.built_by_coach_id
+    if coach_id is None:
+        return False
+    coach = session.get(User, coach_id)
+    if coach is None:  # pragma: no cover - FK RESTRICT
+        return False
+    return billing_service.check(
+        session,
+        user=coach,
+        action=EntitlementAction.WHITE_LABEL_EXPORT,
+        settings=settings,
+    ).allowed
+
+
 def _render_pdf(render: Callable[[pdf.PlanRenderData], bytes], data: pdf.PlanRenderData) -> bytes:
     """Turn a missing font library into a 503 for this endpoint alone.
 
@@ -110,11 +143,39 @@ def _render_pdf(render: Callable[[pdf.PlanRenderData], bytes], data: pdf.PlanRen
     summary="The race card, as a printable A5 page",
 )
 def export_race_card(
-    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+    plan_id: UUID,
+    session: DbSession,
+    user: CurrentUser,
+    settings: Config,
+    branded: Annotated[
+        bool,
+        Query(
+            description=(
+                "Render with the coach's branding, where this plan was built "
+                "by one who has set any. Requires the coach tier."
+            )
+        ),
+    ] = False,
 ) -> Response:
+    """**Unbranded by default, deliberately.**
+
+    A branded artefact is something a coach hands over on purpose. An athlete
+    downloading their own race card gets the house document unless somebody
+    chose otherwise — and the choice is checked against the coach's
+    entitlement rather than taken on trust from a query parameter.
+    """
     context = _context(session, plan_id, user, settings)
     detail = plan_detail(session, context.plan)
-    document = _render_pdf(pdf.render_race_card, export_service.build_render_data(context, detail))
+    document = _render_pdf(
+        pdf.render_race_card,
+        export_service.build_render_data(
+            context,
+            detail,
+            session=session,
+            settings=settings,
+            branded=_branding_allowed(session, context, settings, branded),
+        ),
+    )
     return _download(
         document,
         media_type="application/pdf",
@@ -132,12 +193,25 @@ def export_race_card(
     summary="Bag manifests, one page per bag",
 )
 def export_bag_manifests(
-    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+    plan_id: UUID,
+    session: DbSession,
+    user: CurrentUser,
+    settings: Config,
+    branded: Annotated[
+        bool, Query(description="Render with the coach's branding, as above.")
+    ] = False,
 ) -> Response:
     context = _context(session, plan_id, user, settings)
     detail = plan_detail(session, context.plan)
     document = _render_pdf(
-        pdf.render_bag_manifests, export_service.build_render_data(context, detail)
+        pdf.render_bag_manifests,
+        export_service.build_render_data(
+            context,
+            detail,
+            session=session,
+            settings=settings,
+            branded=_branding_allowed(session, context, settings, branded),
+        ),
     )
     return _download(
         document,

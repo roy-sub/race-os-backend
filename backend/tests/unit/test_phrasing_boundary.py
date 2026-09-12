@@ -232,3 +232,155 @@ def test_the_boundary_is_described_for_operators() -> None:
     assert "solver decides" in described["law"].lower()
     assert any("constraint" in item for item in described["model_never_receives"])
     assert "deterministic" in described["on_failure"].lower()
+
+
+# ---------------------------------------------------------------------------
+# The provider, and the wall over a real wire format
+#
+# The adversary above drives an injected model. These drive the actual HTTP
+# adapter against a stub transport, so the boundary is exercised through the
+# code path a configured deployment runs — parsing, error handling and all.
+# ---------------------------------------------------------------------------
+
+
+class _StubResponse:
+    def __init__(self, status_code: int, payload: object) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _StubClient:
+    """Records what was sent and returns what it was told to."""
+
+    def __init__(self, response: _StubResponse) -> None:
+        self._response = response
+        self.sent: dict[str, object] = {}
+        self.closed = False
+
+    def post(self, path: str, json: dict[str, object]) -> _StubResponse:
+        self.sent = {"path": path, **json}
+        return self._response
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _reply(text: str) -> _StubResponse:
+    return _StubResponse(200, {"choices": [{"message": {"content": text}}]})
+
+
+@pytest.fixture
+def configured() -> Settings:
+    """Phrasing on, with a model id and a credential."""
+    from pydantic import SecretStr
+
+    return Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        phrasing_enabled=True,
+        phrasing_model_id="test-model",
+        phrasing_model_api_key=SecretStr("sk-not-a-real-key"),
+    )
+
+
+def _with_http(settings: Settings, response: _StubResponse) -> _StubClient:
+    client = _StubClient(response)
+    phrasing.set_model(phrasing.HttpPhrasingModel(settings, client=client))
+    return client
+
+
+def test_the_adapter_is_only_built_when_it_is_fully_configured(
+    configured: Settings, enabled: Settings
+) -> None:
+    """Three conditions, all required. Any missing yields the disabled model,
+    which returns the deterministic text — so a half-configured deployment is
+    correct rather than broken."""
+    phrasing.set_model(None)
+    assert isinstance(phrasing.get_model(configured), phrasing.HttpPhrasingModel)
+
+    # Enabled, with a model id, but no credential.
+    phrasing.set_model(None)
+    assert isinstance(phrasing.get_model(enabled), phrasing.DisabledPhrasingModel)
+
+    # Off entirely.
+    phrasing.set_model(None)
+    assert isinstance(
+        phrasing.get_model(Settings(_env_file=None)),  # type: ignore[call-arg]
+        phrasing.DisabledPhrasingModel,
+    )
+
+
+def test_the_model_is_sent_the_sentence_and_nothing_it_could_compute_with(
+    configured: Settings,
+) -> None:
+    """It is being asked to improve a reading. Handing it the inputs would be
+    inviting it to check the arithmetic."""
+    client = _with_http(configured, _reply("On the bike, hold 208 w. Then 5:12/km."))
+    phrasing.phrase(
+        phrasing.PhrasingRequest(deterministic_text=DETERMINISTIC, context="race_card"),
+        configured,
+    )
+
+    messages = client.sent["messages"]
+    assert isinstance(messages, list)
+    user = next(m for m in messages if m["role"] == "user")
+    assert DETERMINISTIC in user["content"]
+    assert "race_card" in user["content"]
+    # No athlete state anywhere in the payload.
+    for forbidden in ("threshold", "ftp", "sweat_rate", "weight", "constraint"):
+        assert forbidden not in str(client.sent).lower()
+
+
+def test_sampling_is_off_so_a_plan_does_not_reword_itself_on_reload(
+    configured: Settings,
+) -> None:
+    client = _with_http(configured, _reply("On the bike, hold 208 w. Then 5:12/km."))
+    phrasing.phrase(phrasing.PhrasingRequest(deterministic_text=DETERMINISTIC), configured)
+    assert client.sent["temperature"] == 0.0
+    assert client.sent["model"] == "test-model"
+
+
+def test_an_invented_number_over_http_is_still_rejected(configured: Settings) -> None:
+    """The wall does not care which model returned the text."""
+    _with_http(configured, _reply("Hold 214 w on the bike and 5:12/km on the run."))
+    result = phrasing.phrase(phrasing.PhrasingRequest(deterministic_text=DETERMINISTIC), configured)
+    assert result.text == DETERMINISTIC
+    assert result.rewritten is False
+
+
+def test_a_provider_error_falls_back_without_echoing_the_body(
+    configured: Settings,
+) -> None:
+    """A provider error body can echo the request that caused it."""
+    _with_http(configured, _StubResponse(500, {"error": {"message": DETERMINISTIC}}))
+    result = phrasing.phrase(phrasing.PhrasingRequest(deterministic_text=DETERMINISTIC), configured)
+    assert result.text == DETERMINISTIC
+    assert result.rewritten is False
+    assert "500" in result.reason or "PhrasingUnavailableError" in result.reason
+
+
+def test_an_unusable_body_falls_back(configured: Settings) -> None:
+    _with_http(configured, _StubResponse(200, {"not": "what we expected"}))
+    result = phrasing.phrase(phrasing.PhrasingRequest(deterministic_text=DETERMINISTIC), configured)
+    assert result.text == DETERMINISTIC
+    assert result.rewritten is False
+
+
+def test_the_provider_description_never_carries_the_key(configured: Settings) -> None:
+    """It is served on the ops overview, which is a screen and a log line."""
+    phrasing.set_model(None)
+    described = phrasing.describe_provider(configured)
+
+    assert described["enabled"] is True
+    assert described["credential_present"] is True
+    assert described["model_id"] == "test-model"
+    assert "sk-not-a-real-key" not in str(described)
+
+
+def test_the_prompt_says_it_is_not_the_guarantee() -> None:
+    """A layer whose safety rested on a model following instructions would
+    have no safety at all, and the description says so."""
+    described = phrasing.describe_boundary()
+    assert "validation runs on every reply" in described["prompt_is_not_the_guarantee"]

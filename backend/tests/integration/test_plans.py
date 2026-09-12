@@ -407,3 +407,267 @@ def test_reusing_a_key_for_a_different_body_is_a_conflict(ready_athlete, api: Te
         json={"carb_override": 90},
     )
     assert second.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Warnings
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_stale_input_warns_on_the_plan_it_was_solved_from(
+    ready_athlete, api: TestClient, api_db
+) -> None:
+    """`STALE_DATA` rides alongside the plan; it never replaces it.
+
+    The collector has always been populated. What this pins is the other half:
+    that what it collected reaches the athlete, rather than being assembled and
+    dropped on the way out.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from raceos.db.models import Constraint
+    from raceos.domain.enums import ConstraintSource
+
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    assert api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={}).status_code == 200
+
+    row = api_db.scalar(
+        select(Constraint).where(
+            Constraint.user_id == ready_athlete["user_id"],
+            Constraint.key == "bike_threshold_power",
+        )
+    )
+    # A *manual* value never goes stale — it was never a measurement. Staleness
+    # is a property of a tested one, so the test has to make it that.
+    row.source = ConstraintSource.TESTED
+    row.tested_at = datetime.now(UTC) - timedelta(days=400)
+    api_db.commit()
+
+    plan = api.get(f"/api/v1/plans/{plan_id}", headers=headers)
+    assert plan.status_code == 200, plan.text
+    body = plan.json()
+    assert body["splits"], "the plan is still returned in full"
+
+    stale = [w for w in body["warnings"] if w["code"] == "STALE_DATA"]
+    assert stale, body["warnings"]
+    assert stale[0]["field"] == "bike_threshold_power"
+
+
+@needs_bundle
+def test_a_plan_with_current_inputs_carries_no_warnings(ready_athlete, api: TestClient) -> None:
+    """An empty array, not a decorative one — so a banner only ever appears
+    when there is genuinely something to say."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["warnings"] == []
+
+
+@needs_bundle
+def test_a_stale_value_the_plan_never_read_is_not_a_caveat_on_it(
+    ready_athlete, api: TestClient, api_db
+) -> None:
+    """Scoped to the plan's own constraint refs.
+
+    Warning about a value the solve never consulted is how a warnings array
+    becomes noise people learn to dismiss.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from raceos.db.models import Constraint, PlanConstraintRef
+    from raceos.domain.enums import ConstraintSource
+
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    active_id = UUID(solved.json()["id"])
+
+    referenced = {
+        ref.key
+        for ref in api_db.scalars(
+            select(PlanConstraintRef).where(PlanConstraintRef.plan_id == active_id)
+        )
+    }
+    # Write a ninth value this plan cannot have referenced, and age it.
+    unreferenced = api_db.scalar(
+        select(Constraint).where(
+            Constraint.user_id == ready_athlete["user_id"],
+            Constraint.key.notin_(referenced),
+        )
+    )
+    if unreferenced is None:
+        pytest.skip("the solver referenced every constraint this athlete has")
+    unreferenced.source = ConstraintSource.TESTED
+    unreferenced.tested_at = datetime.now(UTC) - timedelta(days=400)
+    api_db.commit()
+
+    body = api.get(f"/api/v1/plans/{active_id}", headers=headers).json()
+    assert all(w["field"] != unreferenced.key for w in body["warnings"])
+
+
+@needs_bundle
+def test_a_plan_solved_with_no_forecast_says_so(ready_athlete, api: TestClient, api_db) -> None:
+    """`PARTIAL_DATA`: nothing else on the plan reveals this.
+
+    Every heat, wind and water number rests on the neutral defaults in
+    `build_forecast_snapshot`, and they look exactly like real ones.
+    """
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+
+    active = api_db.get(Plan, UUID(solved.json()["id"]))
+    active.forecast_snapshot = {}
+    api_db.commit()
+
+    body = api.get(f"/api/v1/plans/{active.id}", headers=headers).json()
+    partial = [w for w in body["warnings"] if w["code"] == "PARTIAL_DATA"]
+    assert partial, body["warnings"]
+    assert partial[0]["field"] == "forecast"
+
+
+@needs_bundle
+def test_an_unsolved_draft_is_not_warned_about_its_missing_forecast(
+    ready_athlete, api: TestClient
+) -> None:
+    """A draft has not consulted a forecast yet, so there is nothing to caveat."""
+    body = api.get(
+        f"/api/v1/plans/{ready_athlete['plan_id']}", headers=ready_athlete["headers"]
+    ).json()
+    assert [w for w in body["warnings"] if w["code"] == "PARTIAL_DATA"] == []
+
+
+# ---------------------------------------------------------------------------
+# Transitions
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_solved_plan_returns_both_transitions_separately(ready_athlete, api: TestClient) -> None:
+    """Total transition time was always recoverable by subtraction. T1 and T2
+    individually were not, and T1 is the one that carries the wetsuit strip."""
+    solved = api.post(
+        f"/api/v1/plans/{ready_athlete['plan_id']}/solve",
+        headers=ready_athlete["headers"],
+        json={},
+    )
+    assert solved.status_code == 200, solved.text
+    plan = solved.json()
+
+    assert plan["t1_minutes"] > 0
+    assert plan["t2_minutes"] > 0
+    # `M:SS`, not `H:MM` — the seconds are the part that matters here.
+    assert ":" in (plan["t1_label"] or "")
+    assert ":" in (plan["t2_label"] or "")
+
+
+@needs_bundle
+def test_the_splits_and_transitions_account_for_the_whole_projection(
+    ready_athlete, api: TestClient
+) -> None:
+    """Swim + T1 + bike + T2 + run is the projection, to the rounding the
+    solver applies. A ladder that does not add up is a ladder nobody trusts."""
+    plan = api.post(
+        f"/api/v1/plans/{ready_athlete['plan_id']}/solve",
+        headers=ready_athlete["headers"],
+        json={},
+    ).json()
+
+    ladder = sum(s["split_minutes"] for s in plan["splits"])
+    ladder += plan["t1_minutes"] + plan["t2_minutes"]
+    # Each part is rounded to the solver's minutes precision independently, so
+    # the sum can differ from the total by the accumulated rounding and no more.
+    assert abs(ladder - plan["projected_minutes"]) < 0.05
+
+
+@needs_bundle
+def test_an_unsolved_draft_has_no_transitions(ready_athlete, api: TestClient) -> None:
+    """Null, not zero. Zero would mean the athlete teleported."""
+    plan = api.get(
+        f"/api/v1/plans/{ready_athlete['plan_id']}", headers=ready_athlete["headers"]
+    ).json()
+    assert plan["t1_minutes"] is None
+    assert plan["t2_minutes"] is None
+    assert plan["t1_label"] is None
+
+
+# ---------------------------------------------------------------------------
+# Model advisories
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_hot_long_bike_says_its_heat_number_is_soft(ready_athlete, api: TestClient) -> None:
+    """D-1, surfaced.
+
+    The bike heat curve is measured over a 40 km time trial — about an hour —
+    and every leg we sell is far longer, with strain accumulating over exactly
+    that span. There is no duration term and no basis for inventing one, so the
+    number does not change. What changes is that the athlete is told.
+    """
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    # A forecast hot enough for the curve to apply a decrement at all.
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 31, "humidity": 55, "wind_speed_ms": 3, "conditions": "clear"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+
+    keys = {row["key"] for row in solved.json()["advisories"]}
+    assert "model:bike_heat_duration" in keys, solved.json()["advisories"]
+
+    # Prose, not a bare key: `model:bike_heat_clamp` on a race card looks like
+    # a bug to the athlete and tells them nothing either way.
+    for row in solved.json()["advisories"]:
+        assert row["tag"]
+        assert len(row["text"]) > 40
+        assert "model:" not in row["text"]
+
+
+@needs_bundle
+def test_a_cool_plan_carries_no_advisory(ready_athlete, api: TestClient) -> None:
+    """Empty, so an advisory block only ever appears when there is one."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 12, "humidity": 60, "wind_speed_ms": 2, "conditions": "cloudy"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["advisories"] == []
+
+
+@needs_bundle
+def test_an_advisory_survives_being_read_back(ready_athlete, api: TestClient) -> None:
+    """Persisted with the plan, not recomputed on read: it describes the solve
+    that produced these numbers, not the weather today."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    api.patch(
+        f"/api/v1/plans/{plan_id}/draft",
+        headers=headers,
+        json={
+            "forecast": {"temp_c": 31, "humidity": 55, "wind_speed_ms": 3, "conditions": "clear"}
+        },
+    )
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    active_id = solved.json()["id"]
+
+    reread = api.get(f"/api/v1/plans/{active_id}", headers=headers).json()
+    assert {row["key"] for row in reread["advisories"]} == {
+        row["key"] for row in solved.json()["advisories"]
+    }

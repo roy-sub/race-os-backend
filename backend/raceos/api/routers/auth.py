@@ -18,6 +18,8 @@ from fastapi import APIRouter, Cookie, Header, Request, Response, status
 from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.schemas.auth import (
     AuthResponse,
+    ErasureImpactOut,
+    ErasureRequest,
     ForgotPasswordRequest,
     LoginRequest,
     ProfileUpdate,
@@ -280,6 +282,47 @@ def resend_verification(session: DbSession, settings: Config, user: CurrentUser)
 @router.get("/me", summary="The signed-in athlete")
 def me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.get("/me/erasure-impact", summary="What deleting this account would destroy")
+def erasure_impact(session: DbSession, user: CurrentUser) -> ErasureImpactOut:
+    """Read before the delete, so the confirmation states facts.
+
+    "4 plans and 2 invoices" is a different decision from "0 and 0", and a
+    generic warning makes both look the same.
+    """
+    return ErasureImpactOut.model_validate(auth_service.erasure_impact(session, user=user))
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    summary="Delete this account (GDPR erasure)",
+)
+def erase_me(payload: ErasureRequest, session: DbSession, user: CurrentUser) -> ErasureImpactOut:
+    """**Irreversible, and only ever by the person who holds the account.**
+
+    Not a hard delete. Invoices are financial records with statutory
+    retention, plans a coach built are that coach's work too, and the audit
+    log has to stay referentially intact — so the row survives as a tombstone
+    with an id, a state and a timestamp, and every field that identifies a
+    person is scrubbed. Enough for an invoice to point somewhere; not enough
+    to say who it was.
+
+    Every session is revoked and every token issued before now stops
+    verifying, so an access token still sitting in another tab dies with the
+    account rather than outliving it. The response is the last thing this
+    account will ever receive.
+    """
+    impact = auth_service.erase_account(
+        session,
+        user=user,
+        actor=user,
+        confirmation=payload.confirmation,
+        reason=payload.reason,
+    )
+    session.commit()
+    return ErasureImpactOut.model_validate(impact)
 
 
 @router.patch("/me", summary="Change your own details")

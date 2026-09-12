@@ -163,3 +163,32 @@ class SharedPlanOut(BaseModel):
     fuelling: dict[str, Any] | None = None
     aid_actions: list[dict[str, Any]] | None = None
     bags: list[dict[str, Any]] | None = None
+
+
+class BrandingOut(BaseModel):
+    """A coach's mark, as configured. Never the logo bytes."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    display_name: str | None = None
+    accent_hex: str | None = None
+    footer_note: str | None = None
+    #: Whether a logo is stored. The image itself is fetched from its own
+    #: endpoint — a base64 blob on every settings read would be most of the
+    #: payload, for something the screen shows once.
+    has_logo: bool = False
+    #: What the printed artefact will actually use, including the house accent
+    #: where none was chosen. Returned so a preview cannot disagree with the
+    #: document.
+    effective_accent_hex: str = ""
+
+
+class BrandingUpdate(BaseModel):
+    """Absent means unchanged. Explicitly clearing the accent is its own flag,
+    because `null` and "leave it alone" are different intentions and a single
+    nullable field cannot carry both."""
+
+    display_name: str | None = Field(default=None, max_length=60)
+    accent_hex: str | None = Field(default=None, max_length=7)
+    footer_note: str | None = Field(default=None, max_length=120)
+    clear_accent: bool = False

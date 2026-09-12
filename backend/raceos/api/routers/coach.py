@@ -11,14 +11,18 @@ the coach's next action, including on a page they already have open.
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, File, Response, UploadFile, status
 
 from raceos.api.deps import Config, CurrentUser, DbSession
+from raceos.api.errors import NotFound
 from raceos.api.schemas.coach import (
     AcceptRequest,
     BoardRowOut,
+    BrandingOut,
+    BrandingUpdate,
     CoachLinkOut,
     CompareRequest,
     InviteRequest,
@@ -29,9 +33,12 @@ from raceos.api.schemas.coach import (
 )
 from raceos.api.schemas.plan import PlanDetail, format_hm
 from raceos.api.serialise import plan_detail
-from raceos.db.models import CoachAthleteLink, Plan, User
+from raceos.config import Settings
+from raceos.db.models import CoachAthleteLink, CoachBranding, Plan, User
 from raceos.domain.entitlements import EntitlementAction
-from raceos.services import billing_service, coach_service, plan_service
+from raceos.exports import tokens
+from raceos.services import billing_service, branding_service, coach_service, plan_service
+from raceos.storage.base import ObjectNotFoundError, get_storage_backend
 
 router = APIRouter(prefix="/api/v1/coach", tags=["coach"])
 
@@ -52,6 +59,127 @@ def _row(row: coach_service.BoardRow) -> BoardRowOut:
         sign = "+" if row.worst_margin_minutes >= 0 else "-"
         out.margin_label = f"{sign}{format_hm(abs(row.worst_margin_minutes))}"
     return out
+
+
+# ---------------------------------------------------------------------------
+# Branding — a logo and an accent, and nothing more
+# ---------------------------------------------------------------------------
+
+
+def _branding_out(row: CoachBranding | None) -> BrandingOut:
+    if row is None:
+        return BrandingOut(effective_accent_hex=tokens.ACCENT)
+    return BrandingOut(
+        display_name=row.display_name,
+        accent_hex=row.accent_hex,
+        footer_note=row.footer_note,
+        has_logo=bool(row.logo_storage_key),
+        # The house accent where none was chosen, so a preview cannot disagree
+        # with the document a coach is about to hand over.
+        effective_accent_hex=row.accent_hex or tokens.ACCENT,
+    )
+
+
+def _require_white_label(session: DbSession, user: User, settings: Settings) -> None:
+    billing_service.require(
+        session,
+        user=user,
+        action=EntitlementAction.WHITE_LABEL_EXPORT,
+        settings=settings,
+    )
+
+
+@router.get("/branding", summary="My branding")
+def get_branding(session: DbSession, user: CurrentUser, settings: Config) -> BrandingOut:
+    _require_white_label(session, user, settings)
+    return _branding_out(branding_service.for_coach(session, coach=user))
+
+
+@router.patch("/branding", summary="Set a display name, accent or footer line")
+def update_branding(
+    payload: BrandingUpdate, session: DbSession, user: CurrentUser, settings: Config
+) -> BrandingOut:
+    """**One colour, not a theme.**
+
+    The accent replaces a single value and is refused if it would not survive
+    printing: the race card is read in a transition tent, often through a wet
+    sleeve and often after somebody photocopied it, and the person holding an
+    unreadable one cannot fix it. The layout, the typography and every
+    safeguard in the artefact are fixed.
+    """
+    _require_white_label(session, user, settings)
+    row = branding_service.update(
+        session,
+        coach=user,
+        display_name=payload.display_name,
+        accent_hex=payload.accent_hex,
+        footer_note=payload.footer_note,
+        clear_accent=payload.clear_accent,
+    )
+    session.commit()
+    return _branding_out(row)
+
+
+@router.put("/branding/logo", summary="Upload a logo")
+def upload_branding_logo(
+    session: DbSession,
+    user: CurrentUser,
+    settings: Config,
+    file: Annotated[UploadFile, File(description="A PNG, JPEG or WebP")],
+) -> BrandingOut:
+    """PNG, JPEG or WebP, and the bytes are checked against what they claim.
+
+    No SVG: it is a document format carrying script and external references,
+    and this file is rendered into a PDF on our own server.
+    """
+    _require_white_label(session, user, settings)
+    row = branding_service.set_logo(
+        session,
+        coach=user,
+        data=file.file.read(),
+        content_type=file.content_type or "",
+        settings=settings,
+    )
+    session.commit()
+    return _branding_out(row)
+
+
+@router.get(
+    "/branding/logo",
+    response_class=Response,
+    summary="The stored logo",
+)
+def get_branding_logo(session: DbSession, user: CurrentUser, settings: Config) -> Response:
+    """Served from its own endpoint rather than inlined on the settings read.
+
+    A base64 blob on every read would be most of the payload, for an image the
+    screen shows once.
+    """
+    _require_white_label(session, user, settings)
+    row = branding_service.for_coach(session, coach=user)
+    if row is None or not row.logo_storage_key:
+        raise NotFound("No logo has been uploaded.")
+    try:
+        data = get_storage_backend(settings).get(row.logo_storage_key)
+    except ObjectNotFoundError as error:
+        raise NotFound("That logo is no longer stored. Upload it again.") from error
+    return Response(
+        content=data,
+        media_type=row.logo_content_type or "application/octet-stream",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.delete(
+    "/branding/logo",
+    status_code=status.HTTP_200_OK,
+    summary="Remove the logo",
+)
+def delete_branding_logo(session: DbSession, user: CurrentUser, settings: Config) -> BrandingOut:
+    _require_white_label(session, user, settings)
+    row = branding_service.clear_logo(session, coach=user, settings=settings)
+    session.commit()
+    return _branding_out(row)
 
 
 # ---------------------------------------------------------------------------
