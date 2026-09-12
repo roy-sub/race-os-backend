@@ -39,11 +39,13 @@ from raceos.api.routers import (
     drift,
     exports,
     health,
+    help_articles,
     jobs,
     plans,
     postrace,
     racemode,
     races,
+    search,
     share,
 )
 from raceos.config import Settings, get_settings
@@ -116,6 +118,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(courses.router)
     app.include_router(course_submissions.router)
+    app.include_router(search.router)
+    app.include_router(help_articles.router)
     app.include_router(constraints.router)
     app.include_router(plans.router)
     app.include_router(plans.jobs_router)
