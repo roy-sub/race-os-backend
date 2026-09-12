@@ -20,10 +20,19 @@ from sqlalchemy import select
 
 from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.errors import Conflict, InvalidInput, NotFound
-from raceos.api.schemas.race import ForecastOut, RaceCreate, RaceOut, RaceUpdate
-from raceos.db.models import Course, CourseBundle, Plan, Race
+from raceos.api.schemas.race import (
+    ForecastOut,
+    RaceCreate,
+    RaceOut,
+    RaceUpdate,
+    RaceWeekOut,
+    RaceWeekTaskCreate,
+    RaceWeekTaskOut,
+    RaceWeekTaskPatch,
+)
+from raceos.db.models import Course, CourseBundle, Plan, Race, RaceWeekTask
 from raceos.domain.enums import CourseAvailability, PlanStatus, RaceStatus
-from raceos.services import course_service, weather_service
+from raceos.services import course_service, race_week_service, weather_service
 
 router = APIRouter(prefix="/api/v1/races", tags=["races"])
 
@@ -199,6 +208,92 @@ def get_race_forecast(
         for_local_time=(f"{race.event_date.isoformat()} {race.start_time_local.strftime('%H:%M')}"),
         **snapshot,
     )
+
+
+# ---------------------------------------------------------------------------
+# Race week
+# ---------------------------------------------------------------------------
+
+
+def _task_out(task: RaceWeekTask, *, today: date) -> RaceWeekTaskOut:
+    out = RaceWeekTaskOut.model_validate(task)
+    out.days_away = (task.due_date - today).days
+    return out
+
+
+@router.get("/{race_id}/race-week", summary="The race-week checklist")
+def get_race_week(race_id: UUID, session: DbSession, user: CurrentUser) -> RaceWeekOut:
+    """Dated, checkable tasks. **Generated on read, idempotently.**
+
+    The ICS export has always derived the right dates from the event date — a
+    Tuesday race gets a Saturday check-in — but a calendar event cannot be
+    ticked off and nothing was stored, so "have I handed in the special-needs
+    bag?" had no answer. Both now come from one derivation, so the calendar
+    and the checklist cannot disagree about the same week.
+
+    Generating here rather than in a job means a race entered five minutes ago
+    has a checklist, instead of waiting for a cron that may not run before race
+    week.
+    """
+    today = datetime.now(UTC).date()
+    race, tasks, visible = race_week_service.for_race(
+        session, race_id=race_id, user=user, today=today
+    )
+    session.commit()
+    return RaceWeekOut(
+        race_id=race.id,
+        event_date=race.event_date,
+        visible=visible,
+        tasks=[_task_out(task, today=today) for task in tasks],
+        remaining=sum(1 for task in tasks if task.completed_at is None),
+    )
+
+
+@router.post(
+    "/{race_id}/race-week/tasks",
+    status_code=status.HTTP_201_CREATED,
+    summary="Add your own race-week task",
+)
+def add_race_week_task(
+    race_id: UUID, payload: RaceWeekTaskCreate, session: DbSession, user: CurrentUser
+) -> RaceWeekTaskOut:
+    """Sits beside the derived ones, in date order. To the athlete it is one
+    list, so it is one list."""
+    task = race_week_service.add_task(
+        session,
+        race_id=race_id,
+        user=user,
+        title=payload.title,
+        due_date=payload.due_date,
+        description=payload.description,
+    )
+    session.commit()
+    return _task_out(task, today=datetime.now(UTC).date())
+
+
+@router.patch("/race-week/tasks/{task_id}", summary="Tick a task off, or un-tick it")
+def set_race_week_task(
+    task_id: UUID, payload: RaceWeekTaskPatch, session: DbSession, user: CurrentUser
+) -> RaceWeekTaskOut:
+    task = race_week_service.set_completed(
+        session, task_id=task_id, user=user, completed=payload.completed
+    )
+    session.commit()
+    return _task_out(task, today=datetime.now(UTC).date())
+
+
+@router.delete(
+    "/race-week/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    summary="Remove a task you added",
+)
+def delete_race_week_task(task_id: UUID, session: DbSession, user: CurrentUser) -> None:
+    """Yours only. A derived task is part of the race rather than a note, and
+    removing "bike check-in" because it is inconvenient is not something the
+    checklist should help with — ticking it off is."""
+    race_week_service.delete_task(session, task_id=task_id, user=user)
+    session.commit()
 
 
 @router.patch("/{race_id}", summary="Correct a date, time or bib")

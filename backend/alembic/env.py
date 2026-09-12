@@ -21,15 +21,16 @@ from logging.config import fileConfig
 from pathlib import Path
 from typing import Any
 
-from alembic import context
 from geoalchemy2 import alembic_helpers
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from raceos.config import get_settings  # noqa: E402
-from raceos.db.models import Base  # noqa: E402
-from raceos.db.session import normalise_database_url  # noqa: E402
+from raceos.config import get_settings
+from raceos.db.models import Base
+from raceos.db.session import normalise_database_url
 
 config = context.config
 
@@ -45,7 +46,13 @@ target_metadata = Base.metadata
 
 #: Tables owned by the PostGIS extension, not by this application.
 POSTGIS_TABLES = frozenset(
-    {"spatial_ref_sys", "geometry_columns", "geography_columns", "raster_columns", "raster_overviews"}
+    {
+        "spatial_ref_sys",
+        "geometry_columns",
+        "geography_columns",
+        "raster_columns",
+        "raster_overviews",
+    }
 )
 
 

@@ -23,6 +23,7 @@ from raceos.db.models.course import (
     CourseBundleLeg,
     CourseSubmission,
     Race,
+    RaceWeekTask,
 )
 from raceos.db.models.identity import (
     AdminRoleAssignment,
@@ -123,6 +124,7 @@ __all__ = [
     "Purchase",
     "PushSubscription",
     "Race",
+    "RaceWeekTask",
     "RateLimitCounter",
     "Refund",
     "ServiceHealth",

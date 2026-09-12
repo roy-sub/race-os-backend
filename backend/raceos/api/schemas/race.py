@@ -8,7 +8,7 @@ the plan builder can start.
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -111,3 +111,44 @@ class ForecastOut(BaseModel):
     #: The local date and hour this forecast is for — the race's start hour,
     #: not "now". A forecast for 3 a.m. would be no use to a 07:00 start.
     for_local_time: str | None = None
+
+
+class RaceWeekTaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    key: str
+    title: str
+    description: str | None = None
+    due_date: date
+    #: False for anything the athlete added. Only generated tasks are rebuilt
+    #: when a race is re-dated, and only an athlete's own can be deleted.
+    generated: bool
+    completed_at: datetime | None = None
+
+    #: Days from today. Negative once the date has passed, which is what makes
+    #: an overdue item look overdue without the client doing date arithmetic.
+    days_away: int | None = None
+
+
+class RaceWeekOut(BaseModel):
+    """The checklist, and whether it is worth showing yet."""
+
+    race_id: UUID
+    event_date: date
+    #: False outside the window. Beyond three weeks out the answer to every
+    #: item is "not yet"; after race day it is history rather than a checklist.
+    visible: bool
+    tasks: list[RaceWeekTaskOut] = Field(default_factory=list)
+    #: How many are still open. The number the strip leads with.
+    remaining: int = 0
+
+
+class RaceWeekTaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    due_date: date
+    description: str | None = Field(default=None, max_length=500)
+
+
+class RaceWeekTaskPatch(BaseModel):
+    completed: bool

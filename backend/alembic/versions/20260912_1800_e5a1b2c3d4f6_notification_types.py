@@ -87,7 +87,7 @@ def downgrade() -> None:
     connection = op.get_bind()
     for table, column in ENUM_COLUMNS:
         count = connection.exec_driver_sql(
-            f"SELECT count(*) FROM {table} WHERE {column}::text IN ({values})"  # noqa: S608
+            f"SELECT count(*) FROM {table} WHERE {column}::text IN ({values})"
         ).scalar()
         if count:
             in_use.append(f"{table}.{column}: {count} row(s)")

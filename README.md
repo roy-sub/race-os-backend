@@ -160,7 +160,7 @@ inside every block.
 
 ## The API
 
-137 routes. `GET /api/v1/docs` is the live reference; the shape is:
+141 routes. `GET /api/v1/docs` is the live reference; the shape is:
 
 | Area | Routes |
 |---|---|
@@ -168,7 +168,7 @@ inside every block.
 | Constraints and estimators | 4 |
 | Courses, bundles, free recon and cut-off calculator | 6 |
 | Global search and help articles | 4 |
-| Races (enter, list, edit, forecast) | 6 |
+| Races (enter, list, edit, forecast, race week) | 10 |
 | Athlete-submitted courses | 7 |
 | Plans, solving, versions | 10 |
 | Drift | 4 |

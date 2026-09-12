@@ -27,8 +27,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "d4f0a5e6c7b8"
 down_revision: str | None = "c3e9f4d5b6a7"

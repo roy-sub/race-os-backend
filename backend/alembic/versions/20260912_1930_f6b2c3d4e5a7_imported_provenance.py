@@ -57,7 +57,7 @@ def downgrade() -> None:
         if not exists:
             continue
         count = connection.exec_driver_sql(
-            f"SELECT count(*) FROM {table} WHERE {column}::text = 'imported'"  # noqa: S608
+            f"SELECT count(*) FROM {table} WHERE {column}::text = 'imported'"
         ).scalar()
         if count:
             in_use.append(f"{table}.{column}: {count} row(s)")

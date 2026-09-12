@@ -398,3 +398,48 @@ class CourseSubmission(Entity):
         CheckConstraint("lat BETWEEN -90 AND 90", name="course_submissions_lat_range"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="course_submissions_lng_range"),
     )
+
+
+class RaceWeekTask(Entity):
+    """One dated, checkable thing to do before a race.
+
+    **Generated and personal in the same table.** The four or five items every
+    race has are derived from the event date (see
+    :data:`~raceos.exports.files.RACE_WEEK_ITEMS`) and written once per race;
+    anything the athlete adds sits beside them. Two tables would mean two
+    queries, two orderings and two ways to tick something off, for a
+    distinction the athlete does not have — to them it is one list.
+
+    ``key`` is what makes regeneration safe. It is stable across a rebuild, so
+    a task already ticked off stays ticked; the title and the date are not,
+    because a course can be re-dated and the copy can be edited.
+    """
+
+    __tablename__ = "race_week_tasks"
+
+    race_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("races.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Denormalised from the race so a listing is one query and ownership is
+    #: checkable without a join.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Stable identity. Generated items use their derivation's key; an
+    #: athlete's own uses a generated one.
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: False for anything the athlete added. Only generated rows are rebuilt
+    #: when a race is re-dated, so a personal task is never silently moved.
+    generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("race_id", "key", name="uq_race_week_tasks_race_id_key"),
+        Index("ix_race_week_tasks_user_id", "user_id"),
+        Index("ix_race_week_tasks_race_id_due_date", "race_id", "due_date"),
+    )
