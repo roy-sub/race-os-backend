@@ -23,7 +23,4 @@
 
 ## Pending
 
-- B3 — Race Mode offline: service worker, IndexedDB queue, wake lock, large-text
-  mode, enlarged targets.
-- B7 — accessibility pass to WCAG 2.1 AA.
-- B8 — print parity with the PDF, legible in monochrome.
+None. A5, B3, B7 and B8 are done.
