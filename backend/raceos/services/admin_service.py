@@ -249,7 +249,10 @@ def request_support_access(
         session,
         user=athlete,
         settings=settings,
-        type_key=NotificationType.DIGEST,
+        # A privacy notice a convenience preference can mute is not a notice.
+        # This used to be DIGEST, so switching the weekly summary off also
+        # switched off being told somebody asked to read your account.
+        type_key=NotificationType.SUPPORT_ACCESS,
         severity=NotificationSeverity.WARN,
         title="Support has asked to look at your account.",
         body=(

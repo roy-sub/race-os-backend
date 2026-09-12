@@ -202,6 +202,7 @@ called.
 | `kpi-snapshot` | `20 2 * * *` | Aggregate yesterday's KPIs from real rows |
 | `service-health` | `*/15 * * * *` | Probe each dependency |
 | `expire-support-grants` | `*/10 * * * *` | Close grants past their hour |
+| `subscription-renewal-notices` | `0 9 * * *` | Warn subscribers before a renewal charge |
 | `expire-share-links` | `5 * * * *` | Retire lapsed links |
 | `race-status-rollover` | `0 5 * * *` | Complete yesterday's races |
 | `notification-digest` | `0 8 * * 1` | Weekly digest, where there is something to say |

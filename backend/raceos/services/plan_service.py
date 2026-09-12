@@ -65,6 +65,8 @@ from raceos.db.models import (
 from raceos.domain.enums import (
     CONSTRAINT_KEYS,
     Feasibility,
+    NotificationSeverity,
+    NotificationType,
     PlanStatus,
     RiskLevel,
 )
@@ -434,6 +436,7 @@ def solve_plan(
         request=request,
         output=output,
         input_hash=input_hash,
+        settings=settings,
     )
     _record_timing(session, solved, duration_ms, settings)
     session.flush()
@@ -478,6 +481,7 @@ def _persist(
     request: SolveInput,
     output: SolveOutput,
     input_hash: str,
+    settings: Settings,
 ) -> Plan:
     """Insert a new version and supersede the previous active one."""
     previous = session.scalar(
@@ -546,6 +550,9 @@ def _persist(
 
     _replace_children(session, solved, output)
     session.flush()
+
+    if solved.status is PlanStatus.PENDING_ATHLETE_APPROVAL:
+        _notify_plan_ready(session, plan=solved, settings=settings)
     return solved
 
 
@@ -738,6 +745,46 @@ def record_override(
     session.add(event)
     session.flush()
     return event
+
+
+def _notify_plan_ready(session: Session, *, plan: Plan, settings: Settings) -> None:
+    """Tell the athlete a coach built them a plan.
+
+    The one case where a solve finishing is worth a notification. A solve the
+    athlete asked for finishes while they are looking at the screen, so telling
+    them about it is noise; this one happened without them, and the plan sits
+    in ``pending_athlete_approval`` doing nothing until they act on it.
+
+    Failure here never fails the solve. The plan is saved and the athlete has
+    it; a notification that did not send is a smaller problem than a solve that
+    was rolled back for it.
+    """
+    from raceos.services import notification_service
+
+    athlete = session.get(User, plan.user_id)
+    if athlete is None:  # pragma: no cover - FK RESTRICT
+        return
+    coach = session.get(User, plan.built_by_coach_id) if plan.built_by_coach_id else None
+    try:
+        notification_service.notify(
+            session,
+            user=athlete,
+            settings=settings,
+            type_key=NotificationType.PLAN_READY,
+            severity=NotificationSeverity.INFO,
+            title=f"{coach.name if coach and coach.name else 'Your coach'} built you a plan.",
+            body=(
+                "It is not live until you approve it. Read it first — every "
+                "number shows the constraint it came from."
+            ),
+            tag="PLAN READY",
+            race_id=plan.race_id,
+            plan_id=plan.id,
+            cta_label="Review the plan",
+            cta_href=f"/plan?plan={plan.id}",
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("plan_ready notification failed", extra={"plan_id": str(plan.id)})
 
 
 def mark_built_by_coach(session: Session, *, plan: Plan, coach: User) -> Plan:

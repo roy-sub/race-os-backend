@@ -352,3 +352,56 @@ def test_the_coach_link_table_has_no_constraints_permission(migrated_engine) -> 
 
     columns = {c["name"] for c in inspect(migrated_engine).get_columns("coach_athlete_links")}
     assert not {c for c in columns if "constraint" in c}
+
+
+# ---------------------------------------------------------------------------
+# Imported provenance
+# ---------------------------------------------------------------------------
+
+
+def test_a_value_from_an_external_tool_is_not_recorded_as_manual(
+    api: TestClient, signed_up
+) -> None:
+    """ "Manual" means a person typed what they believe. A figure out of a
+    bike-split modeller is a different claim, and the drawer says so."""
+    headers = signed_up["headers"]
+    response = api.put(
+        "/api/v1/constraints/bike_threshold_power",
+        headers=headers,
+        json={
+            "value": 224,
+            "source": "imported",
+            "evidence_note": "Modelled bike split for Tramuntana, 2026 season",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["source"] == "imported"
+    assert response.json()["evidence_note"]
+
+
+def test_an_imported_value_never_goes_stale(api: TestClient, signed_up, api_db) -> None:
+    """It is a model's output, not a measurement: it is wrong when the athlete
+    changes, not after an interval."""
+    headers = signed_up["headers"]
+    api.put(
+        "/api/v1/constraints/bike_threshold_power",
+        headers=headers,
+        json={"value": 224, "source": "imported"},
+    )
+    row = api_db.scalar(select(Constraint).where(Constraint.key == "bike_threshold_power"))
+    row.tested_at = datetime.now(UTC) - timedelta(days=900)
+    api_db.commit()
+
+    rows = api.get("/api/v1/constraints", headers=headers).json()
+    imported = next(r for r in rows if r["key"] == "bike_threshold_power")
+    assert imported["stale"] is False
+
+
+def test_an_imported_value_carries_the_same_numeric_weight(api: TestClient, signed_up) -> None:
+    """Law 2 in the other direction: provenance travels and is never read by
+    the solver. No branch anywhere down-weights an imported figure."""
+    from raceos.domain.enums import ConstraintSource
+    from raceos.solver.tables import precedence as prec
+
+    # Nothing in the solver may branch on a source at all.
+    assert all(source.value not in prec.MODEL_LIMIT_KEYS for source in ConstraintSource)

@@ -41,6 +41,8 @@ from raceos.domain.entitlements import (
 )
 from raceos.domain.enums import (
     Currency,
+    NotificationSeverity,
+    NotificationType,
     PurchaseStatus,
     RefundReason,
     SubscriptionStatus,
@@ -768,6 +770,46 @@ HANDLED_EVENTS = frozenset(
 )
 
 
+def _tell(
+    session: Session,
+    *,
+    user_id: UUID,
+    type_key: NotificationType,
+    severity: NotificationSeverity,
+    title: str,
+    body: str,
+    tag: str,
+    cta_label: str = "Open billing",
+    cta_href: str = "/settings?tab=billing",
+) -> None:
+    """Send a billing notification, and never fail a webhook for it.
+
+    The provider retries a webhook it does not get a 200 for. Letting a
+    notification failure turn into a non-200 would mean the same payment being
+    reconciled over and over because a message did not send.
+    """
+    from raceos.services import notification_service
+
+    user = session.get(User, user_id)
+    if user is None:  # pragma: no cover - FK RESTRICT
+        return
+    try:
+        notification_service.notify(
+            session,
+            user=user,
+            settings=get_settings(),
+            type_key=type_key,
+            severity=severity,
+            title=title,
+            body=body,
+            tag=tag,
+            cta_label=cta_label,
+            cta_href=cta_href,
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("billing notification failed", extra={"type_key": type_key.value})
+
+
 def apply_webhook(session: Session, *, event_type: str, data: dict[str, Any]) -> str:
     """Reconcile local state with what the provider says happened.
 
@@ -794,7 +836,36 @@ def apply_webhook(session: Session, *, event_type: str, data: dict[str, Any]) ->
                 purchase.status = PurchaseStatus.CAPTURED
                 purchase.captured_at = datetime.now(UTC)
                 issue_invoice(session, purchase=purchase, description="RaceOS race plan")
+                # Only on the transition. A provider replaying the same event
+                # must not tell the athlete twice that they were charged.
+                _tell(
+                    session,
+                    user_id=purchase.user_id,
+                    type_key=NotificationType.PAYMENT_SUCCEEDED,
+                    severity=NotificationSeverity.OK,
+                    title="Your payment went through.",
+                    body="Your invoice is on the billing screen whenever you need it.",
+                    tag="PAYMENT",
+                    cta_label="See the invoice",
+                )
             return "captured"
+
+        if event_type == "payment_intent.payment_failed":
+            _tell(
+                session,
+                user_id=purchase.user_id,
+                type_key=NotificationType.PAYMENT_FAILED,
+                severity=NotificationSeverity.BAD,
+                title="That payment did not go through.",
+                body=(
+                    "Nothing has been charged. Your plan and everything you "
+                    "entered are exactly as you left them — try again when you "
+                    "are ready."
+                ),
+                tag="PAYMENT",
+                cta_label="Try again",
+            )
+
         if purchase.status is PurchaseStatus.AUTHORIZED:
             purchase.status = PurchaseStatus.VOIDED
             purchase.voided_at = datetime.now(UTC)
@@ -825,6 +896,7 @@ def apply_webhook(session: Session, *, event_type: str, data: dict[str, Any]) ->
     if subscription is None:
         return "unknown_subscription"
 
+    was_status = subscription.status
     if event_type == "customer.subscription.deleted":
         subscription.status = SubscriptionStatus.CANCELLED
         subscription.cancel_at = datetime.now(UTC)
@@ -844,8 +916,46 @@ def apply_webhook(session: Session, *, event_type: str, data: dict[str, Any]) ->
     if owner is not None:
         _sync_user_tier(owner, subscription)
 
+    if subscription.status is not was_status:
+        _announce_subscription_change(session, subscription=subscription, previous=was_status)
+
     session.flush()
     return "subscription_updated"
+
+
+def _announce_subscription_change(
+    session: Session,
+    *,
+    subscription: Subscription,
+    previous: SubscriptionStatus,
+) -> None:
+    """Only on a state change, so a replayed event says nothing twice."""
+    if subscription.status is SubscriptionStatus.PAST_DUE:
+        _tell(
+            session,
+            user_id=subscription.user_id,
+            type_key=NotificationType.PAYMENT_FAILED,
+            severity=NotificationSeverity.BAD,
+            title="We could not take this month's payment.",
+            body=(
+                "Every plan you have already paid for still works, permanently. "
+                "What pauses is starting a new one. Updating your card fixes it."
+            ),
+            tag="SUBSCRIPTION",
+            cta_label="Update payment",
+        )
+        return
+
+    if subscription.status is SubscriptionStatus.ACTIVE and previous is SubscriptionStatus.PAST_DUE:
+        _tell(
+            session,
+            user_id=subscription.user_id,
+            type_key=NotificationType.PAYMENT_SUCCEEDED,
+            severity=NotificationSeverity.OK,
+            title="Your subscription is active again.",
+            body="Nothing was lost while it was paused.",
+            tag="SUBSCRIPTION",
+        )
 
 
 def new_idempotency_key() -> str:

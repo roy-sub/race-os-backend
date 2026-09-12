@@ -55,6 +55,11 @@ def register(name: str, *, description: str, suggested_cron: str) -> Callable[[J
     return decorator
 
 
+#: How far ahead a renewal notice goes out. A week is long enough to do
+#: something about it and short enough to still be true.
+RENEWAL_NOTICE_DAYS = 7
+
+
 def registry() -> dict[str, Job]:
     return dict(_REGISTRY)
 
@@ -259,6 +264,72 @@ def _expire_support_grants(session: Session, settings: Settings) -> dict[str, An
     from raceos.services import admin_service
 
     return admin_service.expire_support_grants(session)
+
+
+@register(
+    "subscription-renewal-notices",
+    description=(
+        "Tell subscribers a renewal is due, before the charge. After it, the "
+        "message is a receipt; before it, it is the chance to cancel."
+    ),
+    suggested_cron="0 9 * * *",
+)
+def _subscription_renewal_notices(session: Session, settings: Settings) -> dict[str, Any]:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select as sa_select
+
+    from raceos.db.models import Subscription, User
+    from raceos.domain.enums import (
+        NotificationSeverity,
+        NotificationType,
+        SubscriptionStatus,
+    )
+    from raceos.services import notification_service
+
+    now = datetime.now(UTC)
+    window_opens = now + timedelta(days=RENEWAL_NOTICE_DAYS - 1)
+    window_closes = now + timedelta(days=RENEWAL_NOTICE_DAYS)
+
+    sent = 0
+    skipped_cancelling = 0
+    for subscription in session.scalars(
+        sa_select(Subscription).where(
+            Subscription.status == SubscriptionStatus.ACTIVE,
+            Subscription.renews_at.is_not(None),
+            Subscription.renews_at > window_opens,
+            Subscription.renews_at <= window_closes,
+        )
+    ):
+        # Somebody who has already cancelled does not need telling that the
+        # thing they cancelled is about to renew, because it is not.
+        if subscription.cancel_at is not None:
+            skipped_cancelling += 1
+            continue
+        user = session.get(User, subscription.user_id)
+        if user is None:  # pragma: no cover - FK RESTRICT
+            continue
+        # A one-day window rather than "renews within N days" means a daily
+        # cron sends exactly one notice per renewal, without a sent-marker
+        # column to keep in step.
+        notification_service.notify(
+            session,
+            user=user,
+            settings=settings,
+            type_key=NotificationType.SUBSCRIPTION_RENEWING,
+            severity=NotificationSeverity.INFO,
+            title=f"Your {subscription.tier.value.replace('_', ' ')} renews in a week.",
+            body=(
+                "Nothing to do if you are staying. If you are not, cancelling "
+                "now still leaves you everything you have already paid for."
+            ),
+            tag="SUBSCRIPTION",
+            cta_label="Open billing",
+            cta_href="/settings?tab=billing",
+        )
+        sent += 1
+
+    return {"notices_sent": sent, "skipped_already_cancelling": skipped_cancelling}
 
 
 @register(

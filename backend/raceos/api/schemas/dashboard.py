@@ -32,6 +32,14 @@ class RaceCardOut(BaseModel):
     plan_id: UUID | None = None
     plan_version: int | None = None
     plan_status: str
+    #: The lifecycle status as an athlete reads it, folding in facts a state
+    #: machine cannot hold: whether the race is paid for, whether drift is
+    #: waiting, whether the day has passed. Derived server-side so every screen
+    #: describes the same plan the same way.
+    display_status: str = "none"
+    #: A captured payment covers this race. Scoped to the race, not the plan —
+    #: a purchase against version 1 still covers version 4.
+    purchased: bool = False
     feasibility: str
     goal_minutes: float | None = None
     projected_minutes: float | None = None

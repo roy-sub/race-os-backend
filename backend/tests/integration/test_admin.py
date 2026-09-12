@@ -6,6 +6,7 @@ constant could not pass.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -592,11 +593,27 @@ def test_nobody_opens_another_athletes_race_mode(solved, api: TestClient) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_thirteen_jobs_are_registered(api: TestClient, api_settings) -> None:
-    """Every scheduled job is a service function behind one secret."""
+def test_every_registered_job_is_documented_and_callable(api: TestClient, api_settings) -> None:
+    """Every scheduled job is a service function behind one secret.
+
+    Counted against the README rather than against a literal. A number in a
+    test is a number to bump whenever a job is added, which is exactly the
+    edit somebody makes without checking whether the cron table still matches
+    — and a cron configured from a stale table calls a 404 forever.
+    """
+    from pathlib import Path
+
     secret = api_settings.internal_job_secret.get_secret_value()
     body = api.get("/internal/jobs", headers={"X-Internal-Job-Secret": secret}).json()
-    assert len(body["jobs"]) == 13
+    registered = {job["name"] for job in body["jobs"]}
+
+    readme = (Path(__file__).resolve().parents[3] / "README.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"^\| `([a-z-]+)` \| `[^`]+` \|", readme, re.MULTILINE))
+
+    assert registered == documented, (
+        f"only registered {sorted(registered - documented)}, "
+        f"only documented {sorted(documented - registered)}"
+    )
 
 
 @needs_bundle

@@ -75,6 +75,16 @@ class ConstraintSource(_StrEnum):
     TESTED = "tested"
     MANUAL = "manual"
     ESTIMATED = "estimated"
+    #: Brought in from a tool outside RaceOS — a bike-split modeller, a
+    #: coach's spreadsheet, a lab report.
+    #:
+    #: Distinct from ``MANUAL``, which was the nearest available stamp and is
+    #: wrong: manual means a person typed what they believe, imported means a
+    #: named external tool produced it. They age differently and they are
+    #: defended differently, and a drawer saying "manual" about a figure from
+    #: a bike-split modeller tells the athlete the wrong thing about their own
+    #: number. ``source_detail`` carries which tool.
+    IMPORTED = "imported"
 
 
 class BikePosition(_StrEnum):
@@ -422,18 +432,58 @@ class Currency(_StrEnum):
 
 
 class NotificationType(_StrEnum):
+    """Every kind of thing the system tells an athlete about.
+
+    Each one corresponds to an event the code actually produces. There is no
+    entry here for something a job might emit one day: an unreachable type
+    shows up in the preferences screen as a switch that governs nothing.
+    """
+
     DRIFT = "drift"
     WEEK = "week"
     CUTOFF = "cutoff"
     BUNDLE = "bundle"
     ANALYSIS = "analysis"
     DIGEST = "digest"
+    #: A plan built by a coach is waiting for the athlete to approve it. Not
+    #: "plan solved": a solve the athlete asked for finishes while they are
+    #: looking at it, and telling someone what they can already see is noise.
+    #: This one they cannot see, because somebody else did it.
+    PLAN_READY = "plan_ready"
+    #: A coach shared a plan or a link with this athlete.
+    COACH_SHARED = "coach_shared"
+    #: An athlete accepted a coach's invitation. The only coach-facing type.
+    ATHLETE_ACCEPTED = "athlete_accepted"
+    PAYMENT_SUCCEEDED = "payment_succeeded"
+    PAYMENT_FAILED = "payment_failed"
+    #: A subscription is about to renew. Sent before the charge, not after —
+    #: the point is the chance to cancel, which a receipt does not give.
+    SUBSCRIPTION_RENEWING = "subscription_renewing"
+    #: A support agent has asked to look at this account.
+    #:
+    #: Not on the original list of twelve, and added because it was being sent
+    #: as ``DIGEST``: an athlete who had switched the weekly digest off would
+    #: never have been told somebody asked to read their account. A privacy
+    #: notice that a convenience preference can mute is not a notice.
+    SUPPORT_ACCESS = "support_access"
 
 
 #: Types whose in-app delivery cannot be switched off. The user chooses the
 #: channel; they do not choose whether a cut-off warning exists.
+#:
+#: ``PAYMENT_FAILED`` joins them for the same reason: an athlete whose card was
+#: declined loses access to things they believe they have paid for, and
+#: learning that from a locked screen instead of a message is the worst
+#: available version of it.
 CRITICAL_NOTIFICATION_TYPES: frozenset[NotificationType] = frozenset(
-    {NotificationType.DRIFT, NotificationType.CUTOFF}
+    {
+        NotificationType.DRIFT,
+        NotificationType.CUTOFF,
+        NotificationType.PAYMENT_FAILED,
+        # Somebody asking to read your account is not something you opt into
+        # hearing about.
+        NotificationType.SUPPORT_ACCESS,
+    }
 )
 
 

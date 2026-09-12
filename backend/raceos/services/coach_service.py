@@ -155,7 +155,9 @@ def invite(
         session,
         user=athlete,
         settings=settings,
-        type_key=NotificationType.DIGEST,
+        # Not DIGEST. An athlete who had switched the weekly digest off would
+        # never have seen the invite, and would have had no idea one existed.
+        type_key=NotificationType.COACH_SHARED,
         severity=NotificationSeverity.INFO,
         title=f"{coach.name or 'A coach'} invited you to link accounts.",
         body=(
@@ -205,7 +207,7 @@ def accept_invite(
             session,
             user=coach,
             settings=settings,
-            type_key=NotificationType.DIGEST,
+            type_key=NotificationType.ATHLETE_ACCEPTED,
             severity=NotificationSeverity.OK,
             title=f"{athlete.name or 'An athlete'} accepted your invite.",
             body="They control what you can see. Nothing is shared until they grant it.",
