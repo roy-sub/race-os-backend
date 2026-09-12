@@ -267,6 +267,39 @@ def _expire_support_grants(session: Session, settings: Settings) -> dict[str, An
 
 
 @register(
+    "conditions-history-backfill",
+    description=(
+        "Fetch what race day was actually like in past years, for every course "
+        "with an announced edition date. Only what is missing: a past day's "
+        "weather does not change."
+    ),
+    suggested_cron="0 3 * * 0",
+)
+def _conditions_history_backfill(session: Session, settings: Settings) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+
+    from raceos.db.models import Course
+    from raceos.domain.enums import CourseVisibility
+    from raceos.services import conditions_service
+
+    results: list[dict[str, Any]] = []
+    fetched = 0
+    for course in session.scalars(
+        sa_select(Course).where(
+            Course.visibility != CourseVisibility.RETIRED,
+            Course.next_edition_date.is_not(None),
+        )
+    ):
+        outcome = conditions_service.backfill_course(session, course=course, settings=settings)
+        fetched += int(outcome.get("fetched", 0))
+        results.append(outcome)
+
+    # Weekly rather than daily: the archive only gains a row when a race is
+    # run, and re-asking about 2019 every morning is a request nobody needs.
+    return {"courses": len(results), "observations_fetched": fetched, "detail": results}
+
+
+@register(
     "subscription-renewal-notices",
     description=(
         "Tell subscribers a renewal is due, before the charge. After it, the "

@@ -160,13 +160,13 @@ inside every block.
 
 ## The API
 
-141 routes. `GET /api/v1/docs` is the live reference; the shape is:
+142 routes. `GET /api/v1/docs` is the live reference; the shape is:
 
 | Area | Routes |
 |---|---|
 | Auth and sessions, including erasure | 11 |
 | Constraints and estimators | 4 |
-| Courses, bundles, free recon and cut-off calculator | 6 |
+| Courses, bundles, free recon, conditions history, cut-off calculator | 7 |
 | Global search and help articles | 4 |
 | Races (enter, list, edit, forecast, race week) | 10 |
 | Athlete-submitted courses | 7 |
@@ -203,6 +203,7 @@ called.
 | `service-health` | `*/15 * * * *` | Probe each dependency |
 | `expire-support-grants` | `*/10 * * * *` | Close grants past their hour |
 | `subscription-renewal-notices` | `0 9 * * *` | Warn subscribers before a renewal charge |
+| `conditions-history-backfill` | `0 3 * * 0` | Fetch past race-day weather for announced editions |
 | `expire-share-links` | `5 * * * *` | Retire lapsed links |
 | `race-status-rollover` | `0 5 * * *` | Complete yesterday's races |
 | `notification-digest` | `0 8 * * 1` | Weekly digest, where there is something to say |

@@ -292,6 +292,19 @@ def _load_course(session: Session, course_ref: str) -> Course:
     return course
 
 
+def load_visible_course(session: Session, course_ref: str, viewer: User | None) -> Course:
+    """Resolve a course, honouring the directory's own visibility rules.
+
+    The 404 for "not visible to you" is the same as for "does not exist",
+    deliberately: nothing here is secret, and two different answers would still
+    let a signed-out visitor enumerate which courses exist.
+    """
+    course = _load_course(session, course_ref)
+    if not visible_to(course, viewer):
+        raise NotFound(f"No course {course_ref!r}.")
+    return course
+
+
 def _bundle_summary(bundle: CourseBundle) -> BundleSummary:
     summary = BundleSummary.model_validate(bundle)
     summary.provenance = PROVENANCE_DISPLAY[bundle.provenance]

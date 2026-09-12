@@ -443,3 +443,60 @@ class RaceWeekTask(Entity):
         Index("ix_race_week_tasks_user_id", "user_id"),
         Index("ix_race_week_tasks_race_id_due_date", "race_id", "due_date"),
     )
+
+
+class CourseConditionsHistory(Entity):
+    """What race day was actually like, one row per past edition.
+
+    **Observed, not modelled and not invented.** Every value here is
+    reanalysis from the weather archive for this course's coordinates on this
+    date. The prototype's conditions panel quoted a median air temperature, a
+    wetsuit likelihood and a finish-time distribution, and none of the three
+    was backed by anything — they were written to look like data.
+
+    ``water_temp_c`` is nullable and frequently null, deliberately. Sea-surface
+    temperature is available for a coastal swim and not for a lake, and a lake
+    course guessing at its own water temperature would be the invented number
+    all over again. Where it is absent, the wetsuit likelihood is absent too
+    rather than estimated from air temperature.
+
+    There is no finish-time column. That needs actual results, which this
+    system does not have and cannot obtain, so the recon page says so instead
+    of drawing a distribution.
+    """
+
+    __tablename__ = "course_conditions_history"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False
+    )
+    #: The date observed. Usually a past edition's race day; where the exact
+    #: date is unknown it is the same calendar day in that year, which is what
+    #: "what is it like then" actually asks.
+    observed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    #: Local hour the observation is for — the race's start hour, so a 07:00
+    #: start is not described by an afternoon high.
+    observed_hour: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    air_temp_c: Mapped[float] = mapped_column(Numeric, nullable=False)
+    humidity_pct: Mapped[float] = mapped_column(Numeric, nullable=False)
+    wind_speed_ms: Mapped[float] = mapped_column(Numeric, nullable=False)
+    wind_dir_deg: Mapped[float | None] = mapped_column(Numeric)
+    precipitation_mm: Mapped[float | None] = mapped_column(Numeric)
+    cloud_cover_pct: Mapped[float | None] = mapped_column(Numeric)
+    #: Null for any course whose swim the marine archive does not cover.
+    water_temp_c: Mapped[float | None] = mapped_column(Numeric)
+
+    #: Which archive this came from, so a row can be traced and re-fetched.
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id", "observed_on", name="uq_course_conditions_history_course_date"
+        ),
+        Index("ix_course_conditions_history_course_id", "course_id"),
+        CheckConstraint(
+            "observed_hour BETWEEN 0 AND 23", name="course_conditions_history_hour_valid"
+        ),
+    )

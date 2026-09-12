@@ -81,9 +81,9 @@ def test_the_dates_come_from_the_event_date_not_from_weekday_names(
 
     tasks = {
         t["key"]: date.fromisoformat(t["due_date"])
-        for t in api.get(
-            f"/api/v1/races/{race_id}/race-week", headers=signed_up["headers"]
-        ).json()["tasks"]
+        for t in api.get(f"/api/v1/races/{race_id}/race-week", headers=signed_up["headers"]).json()[
+            "tasks"
+        ]
     }
     assert tasks["race_day"] == race.event_date
     assert tasks["bike_check_in"] == race.event_date - timedelta(days=1)
@@ -241,9 +241,7 @@ def test_a_task_due_after_race_day_is_refused(seeded, api: TestClient, signed_up
 
 
 @needs_bundle
-def test_the_strip_is_hidden_until_it_is_worth_showing(
-    seeded, api: TestClient, signed_up
-) -> None:
+def test_the_strip_is_hidden_until_it_is_worth_showing(seeded, api: TestClient, signed_up) -> None:
     """Beyond three weeks out the answer to every item is "not yet"."""
     far = _enter(api, signed_up["headers"], days_away=120)
     near = _enter(api, signed_up["headers"], days_away=4)
@@ -263,9 +261,9 @@ def test_days_away_is_computed_so_the_client_does_no_date_arithmetic(
     seeded, api: TestClient, signed_up
 ) -> None:
     race_id = _enter(api, signed_up["headers"], days_away=5)
-    tasks = api.get(
-        f"/api/v1/races/{race_id}/race-week", headers=signed_up["headers"]
-    ).json()["tasks"]
+    tasks = api.get(f"/api/v1/races/{race_id}/race-week", headers=signed_up["headers"]).json()[
+        "tasks"
+    ]
     race_day = next(t for t in tasks if t["key"] == "race_day")
     assert race_day["days_away"] == 5
 
