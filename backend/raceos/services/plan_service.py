@@ -33,7 +33,15 @@ from shapely.geometry import LineString
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from raceos.api.errors import Conflict, Forbidden, Infeasible, InfeasibleDetails, NotFound
+from raceos.api.errors import (
+    Conflict,
+    ErrorCode,
+    Forbidden,
+    Infeasible,
+    InfeasibleDetails,
+    NotFound,
+    WarningCollector,
+)
 from raceos.config import Settings
 from raceos.db.models import (
     Constraint,
@@ -61,6 +69,7 @@ from raceos.domain.enums import (
     RiskLevel,
 )
 from raceos.logging import get_logger
+from raceos.services import constraint_service
 from raceos.solver.adapters import from_pipeline_bundle
 from raceos.solver.errors import MissingConstraint
 from raceos.solver.models import (
@@ -771,6 +780,57 @@ def get_plan(session: Session, *, plan_id: UUID, user: User) -> Plan:
         raise NotFound("Plan not found.")
     require_owner(plan, user)
     return plan
+
+
+def attach_input_warnings(
+    session: Session,
+    *,
+    plan: Plan,
+    warnings: WarningCollector,
+    settings: Settings,
+) -> None:
+    """The caveats *this plan's own inputs* carry.
+
+    Two of them, and they are the only two warning codes the taxonomy has:
+
+    ``STALE_DATA``
+        A constraint the solve actually read has aged past its testing
+        interval. Scoped to the plan's own ``plan_constraint_refs`` rather
+        than to everything the athlete has ever measured — a stale swim pace
+        is not a caveat on a plan that never consulted it, and warning about
+        it would train people to ignore the warnings that do matter.
+
+    ``PARTIAL_DATA``
+        The plan was solved with **no forecast at all**, so every number the
+        environment model produced rests on the neutral defaults in
+        :func:`build_forecast_snapshot` rather than on this race day.
+
+        Deliberately not emitted per entry in ``assumed_fields``: those are
+        single optional inputs, they are already returned on the plan, and the
+        screen marks the individual numbers that rested on them. Saying the
+        same thing twice in two registers is how a warnings array becomes
+        something people learn to dismiss. A missing forecast is the different
+        and larger case — nothing else on the plan reveals it.
+
+    Neither replaces the plan. Both ride alongside it.
+    """
+    referenced = set(
+        session.scalars(select(PlanConstraintRef.key).where(PlanConstraintRef.plan_id == plan.id))
+    )
+    owned = constraint_service.list_constraints(session, athlete_id=plan.user_id)
+    # An unsolved draft has no refs yet, so there is nothing to scope to and
+    # every constraint is a candidate input.
+    relevant = [row for row in owned if not referenced or row.key in referenced]
+    constraint_service.attach_staleness_warnings(relevant, warnings, settings)
+
+    if plan.solved_at is not None and not plan.forecast_snapshot:
+        warnings.add(
+            ErrorCode.PARTIAL_DATA,
+            "No forecast was available when this plan was solved, so its heat, "
+            "wind and water numbers rest on mild defaults rather than on your "
+            "race day. Re-solve once the forecast lands.",
+            "forecast",
+        )
 
 
 def list_plans(session: Session, *, user: User) -> list[Plan]:

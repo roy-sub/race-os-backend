@@ -11,7 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path
 
-from raceos.api.deps import Config, CurrentUser, DbSession, Warnings
+from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.errors import InvalidInput
 from raceos.api.schemas.constraint import (
     ConstraintHistoryOut,
@@ -38,10 +38,19 @@ def _serialise(constraint: Constraint, settings: Settings) -> ConstraintOut:
 
 @router.get("", summary="Current values with provenance")
 def list_constraints(
-    session: DbSession, settings: Config, user: CurrentUser, warnings: Warnings
+    session: DbSession, settings: Config, user: CurrentUser
 ) -> list[ConstraintOut]:
+    """Staleness rides on each row's ``stale`` flag, not in a warnings array.
+
+    This response is a list, so there is no top-level object for a caveat to
+    sit in — and a per-row flag is the better surface anyway, because the
+    screen rendering it puts the warning beside the value it is about rather
+    than in a banner the reader has to match up by hand. The ``warnings``
+    array is for responses where the athlete cannot see which input is at
+    fault: a solved plan carries it (see ``GET /plans/{id}``), a table of the
+    inputs themselves does not need it.
+    """
     rows = constraint_service.list_constraints(session, athlete_id=user.id)
-    constraint_service.attach_staleness_warnings(rows, warnings, settings)
     return [_serialise(row, settings) for row in rows]
 
 

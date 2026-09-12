@@ -20,7 +20,8 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Response, status
 
 from raceos.api.deps import Config, CurrentUser, DbSession, Warnings
-from raceos.api.errors import NotFound
+from raceos.api.errors import NotFound, WarningCollector
+from raceos.api.schemas.common import ResponseWarningOut
 from raceos.api.schemas.plan import (
     OverrideRequest,
     PlanCreate,
@@ -37,6 +38,19 @@ from raceos.services import auth_service, billing_service, plan_service
 from raceos.services.rate_limit import lookup_idempotent, record_idempotent
 
 router = APIRouter(prefix="/api/v1/plans", tags=["plans"])
+
+
+def _with_warnings(detail: PlanDetail, warnings: WarningCollector) -> PlanDetail:
+    """Move the request's collected caveats onto the plan that carries them.
+
+    The collector is populated by services that have no idea how the response
+    is serialised, which is the whole reason it lives on the request. This is
+    the one place that knows both, so it is the one place that copies them
+    across — a service attaching a caveat nobody renders is the failure mode
+    this closes.
+    """
+    detail.warnings = [ResponseWarningOut.model_validate(item) for item in warnings.items]
+    return detail
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +74,9 @@ def list_plans(session: DbSession, user: CurrentUser) -> list[PlanSummary]:
 def get_plan(
     plan_id: UUID, session: DbSession, user: CurrentUser, warnings: Warnings, settings: Config
 ) -> PlanDetail:
-    from raceos.services import constraint_service
-
     plan = plan_service.get_plan(session, plan_id=plan_id, user=user)
-    constraint_service.attach_staleness_warnings(
-        constraint_service.list_constraints(session, athlete_id=user.id),
-        warnings,
-        settings,
-    )
-    return plan_detail(session, plan)
+    plan_service.attach_input_warnings(session, plan=plan, warnings=warnings, settings=settings)
+    return _with_warnings(plan_detail(session, plan), warnings)
 
 
 @router.patch("/{plan_id}/draft", summary="Save a builder step")
@@ -121,6 +129,7 @@ def solve_plan(
     session: DbSession,
     user: CurrentUser,
     settings: Config,
+    warnings: Warnings,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> PlanDetail:
     """200 with the solved plan; 422 with a verdict when infeasible.
@@ -193,7 +202,10 @@ def solve_plan(
     billing_service.capture_for_plan(session, plan=result.plan, settings=settings)
     session.commit()
 
-    detail = plan_detail(session, result.plan)
+    plan_service.attach_input_warnings(
+        session, plan=result.plan, warnings=warnings, settings=settings
+    )
+    detail = _with_warnings(plan_detail(session, result.plan), warnings)
     if idempotency_key:
         record_idempotent(
             session,
@@ -211,7 +223,7 @@ def solve_plan(
 
 @router.post("/{plan_id}/resolve", summary="Athlete-initiated re-solve")
 def resolve_plan(
-    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+    plan_id: UUID, session: DbSession, user: CurrentUser, settings: Config, warnings: Warnings
 ) -> PlanDetail:
     """Always free, and always a new version.
 
@@ -228,7 +240,10 @@ def resolve_plan(
     )
     result = plan_service.solve_plan(session, plan=plan, user=user, settings=settings, force=True)
     session.commit()
-    return plan_detail(session, result.plan)
+    plan_service.attach_input_warnings(
+        session, plan=result.plan, warnings=warnings, settings=settings
+    )
+    return _with_warnings(plan_detail(session, result.plan), warnings)
 
 
 @router.post("/{plan_id}/override", summary="Log a constraint override")

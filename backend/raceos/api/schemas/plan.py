@@ -13,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from raceos.api.schemas.common import ResponseWarningOut
 from raceos.domain.enums import (
     BagKey,
     Feasibility,
@@ -210,6 +211,12 @@ class PlanDetail(PlanSummary):
     bags: list[BagOut] = Field(default_factory=list)
     constraint_refs: list[ConstraintRefOut] = Field(default_factory=list)
     forecast_snapshot: dict[str, Any] = Field(default_factory=dict)
+    #: Caveats about the inputs this plan was solved from — a constraint that
+    #: has gone stale, an optional input the solver had to assume. They ride
+    #: alongside the plan rather than replacing it, because a plan built on an
+    #: ageing FTP is still the right plan to hand the athlete; it just needs
+    #: the caveat attached. Empty on a plan whose inputs are all current.
+    warnings: list[ResponseWarningOut] = Field(default_factory=list)
 
 
 class SolveJobOut(BaseModel):

@@ -407,3 +407,136 @@ def test_reusing_a_key_for_a_different_body_is_a_conflict(ready_athlete, api: Te
         json={"carb_override": 90},
     )
     assert second.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Warnings
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_stale_input_warns_on_the_plan_it_was_solved_from(
+    ready_athlete, api: TestClient, api_db
+) -> None:
+    """`STALE_DATA` rides alongside the plan; it never replaces it.
+
+    The collector has always been populated. What this pins is the other half:
+    that what it collected reaches the athlete, rather than being assembled and
+    dropped on the way out.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from raceos.db.models import Constraint
+    from raceos.domain.enums import ConstraintSource
+
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    assert api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={}).status_code == 200
+
+    row = api_db.scalar(
+        select(Constraint).where(
+            Constraint.user_id == ready_athlete["user_id"],
+            Constraint.key == "bike_threshold_power",
+        )
+    )
+    # A *manual* value never goes stale — it was never a measurement. Staleness
+    # is a property of a tested one, so the test has to make it that.
+    row.source = ConstraintSource.TESTED
+    row.tested_at = datetime.now(UTC) - timedelta(days=400)
+    api_db.commit()
+
+    plan = api.get(f"/api/v1/plans/{plan_id}", headers=headers)
+    assert plan.status_code == 200, plan.text
+    body = plan.json()
+    assert body["splits"], "the plan is still returned in full"
+
+    stale = [w for w in body["warnings"] if w["code"] == "STALE_DATA"]
+    assert stale, body["warnings"]
+    assert stale[0]["field"] == "bike_threshold_power"
+
+
+@needs_bundle
+def test_a_plan_with_current_inputs_carries_no_warnings(ready_athlete, api: TestClient) -> None:
+    """An empty array, not a decorative one — so a banner only ever appears
+    when there is genuinely something to say."""
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["warnings"] == []
+
+
+@needs_bundle
+def test_a_stale_value_the_plan_never_read_is_not_a_caveat_on_it(
+    ready_athlete, api: TestClient, api_db
+) -> None:
+    """Scoped to the plan's own constraint refs.
+
+    Warning about a value the solve never consulted is how a warnings array
+    becomes noise people learn to dismiss.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from raceos.db.models import Constraint, PlanConstraintRef
+    from raceos.domain.enums import ConstraintSource
+
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+    active_id = UUID(solved.json()["id"])
+
+    referenced = {
+        ref.key
+        for ref in api_db.scalars(
+            select(PlanConstraintRef).where(PlanConstraintRef.plan_id == active_id)
+        )
+    }
+    # Write a ninth value this plan cannot have referenced, and age it.
+    unreferenced = api_db.scalar(
+        select(Constraint).where(
+            Constraint.user_id == ready_athlete["user_id"],
+            Constraint.key.notin_(referenced),
+        )
+    )
+    if unreferenced is None:
+        pytest.skip("the solver referenced every constraint this athlete has")
+    unreferenced.source = ConstraintSource.TESTED
+    unreferenced.tested_at = datetime.now(UTC) - timedelta(days=400)
+    api_db.commit()
+
+    body = api.get(f"/api/v1/plans/{active_id}", headers=headers).json()
+    assert all(w["field"] != unreferenced.key for w in body["warnings"])
+
+
+@needs_bundle
+def test_a_plan_solved_with_no_forecast_says_so(ready_athlete, api: TestClient, api_db) -> None:
+    """`PARTIAL_DATA`: nothing else on the plan reveals this.
+
+    Every heat, wind and water number rests on the neutral defaults in
+    `build_forecast_snapshot`, and they look exactly like real ones.
+    """
+    headers = ready_athlete["headers"]
+    plan_id = ready_athlete["plan_id"]
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text
+
+    active = api_db.get(Plan, UUID(solved.json()["id"]))
+    active.forecast_snapshot = {}
+    api_db.commit()
+
+    body = api.get(f"/api/v1/plans/{active.id}", headers=headers).json()
+    partial = [w for w in body["warnings"] if w["code"] == "PARTIAL_DATA"]
+    assert partial, body["warnings"]
+    assert partial[0]["field"] == "forecast"
+
+
+@needs_bundle
+def test_an_unsolved_draft_is_not_warned_about_its_missing_forecast(
+    ready_athlete, api: TestClient
+) -> None:
+    """A draft has not consulted a forecast yet, so there is nothing to caveat."""
+    body = api.get(
+        f"/api/v1/plans/{ready_athlete['plan_id']}", headers=ready_athlete["headers"]
+    ).json()
+    assert [w for w in body["warnings"] if w["code"] == "PARTIAL_DATA"] == []
