@@ -257,6 +257,10 @@ def _display_status(
         return "purchased_not_solved" if purchased else "draft"
     if drift is not None:
         return "needs_review"
+    # Below drift, above active: an athlete whose exported plan has since
+    # drifted needs to know it moved, not that they once downloaded it.
+    if plan.first_exported_at is not None:
+        return "exported"
     return "active"
 
 

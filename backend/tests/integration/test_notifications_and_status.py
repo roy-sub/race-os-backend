@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -182,6 +183,81 @@ def test_a_paid_but_unsolved_race_does_not_read_as_merely_a_draft(
     after = api.get("/api/v1/dashboard", headers=headers).json()["races"][0]
     assert after["purchased"] is True
     assert after["display_status"] == "active"
+
+
+@needs_bundle
+def test_downloading_an_export_makes_the_plan_read_as_exported(
+    seeded, api: TestClient, signed_up
+) -> None:
+    """"Exported" was specified as a status and could not be built, because
+    nothing recorded that an export had happened. Now one fact does."""
+    headers = signed_up["headers"]
+    for key, value in ATHLETE_M.items():
+        api.put(f"/api/v1/constraints/{key}", headers=headers, json={"value": value})
+    race = api.post(
+        "/api/v1/races",
+        headers=headers,
+        json={
+            "course_ref": "tramuntana-full",
+            "event_date": (datetime.now(UTC).date() + timedelta(days=90)).isoformat(),
+            "start_time_local": "07:00",
+        },
+    )
+    plan = api.post("/api/v1/plans", headers=headers, json={"race_id": race.json()["id"]})
+    plan_id = plan.json()["id"]
+    from tests.integration.conftest import buy_plan
+
+    buy_plan(api, headers, plan_id)
+    solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+    assert solved.status_code == 200, solved.text[:400]
+
+    assert api.get("/api/v1/dashboard", headers=headers).json()["races"][0][
+        "display_status"
+    ] == "active"
+
+    assert (
+        api.get(f"/api/v1/plans/{plan_id}/export/race-card.pdf", headers=headers).status_code
+        == 200
+    )
+
+    assert api.get("/api/v1/dashboard", headers=headers).json()["races"][0][
+        "display_status"
+    ] == "exported"
+
+
+@needs_bundle
+def test_the_export_stamp_records_the_first_download_not_the_last(
+    seeded, api: TestClient, signed_up, api_db
+) -> None:
+    """A `last_` column would turn every download into a write on the plan
+    row, for a fact that does not get truer the fourth time."""
+    from raceos.db.models import Plan
+
+    headers = signed_up["headers"]
+    for key, value in ATHLETE_M.items():
+        api.put(f"/api/v1/constraints/{key}", headers=headers, json={"value": value})
+    race = api.post(
+        "/api/v1/races",
+        headers=headers,
+        json={
+            "course_ref": "tramuntana-full",
+            "event_date": (datetime.now(UTC).date() + timedelta(days=90)).isoformat(),
+            "start_time_local": "07:00",
+        },
+    )
+    plan = api.post("/api/v1/plans", headers=headers, json={"race_id": race.json()["id"]})
+    plan_id = plan.json()["id"]
+    from tests.integration.conftest import buy_plan
+
+    buy_plan(api, headers, plan_id)
+    api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
+
+    api.get(f"/api/v1/plans/{plan_id}/export/race-card.pdf", headers=headers)
+    first = api_db.get(Plan, UUID(plan_id)).first_exported_at
+    api_db.expire_all()
+    api.get(f"/api/v1/plans/{plan_id}/export/bags.pdf", headers=headers)
+
+    assert api_db.get(Plan, UUID(plan_id)).first_exported_at == first
 
 
 @needs_bundle

@@ -5,7 +5,6 @@
 - D2
 - D3
 - E1
-- E2
 
 ## Pending
 - A5

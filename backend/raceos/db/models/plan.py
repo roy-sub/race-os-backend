@@ -94,6 +94,13 @@ class Plan(Entity):
     binding_constraint_key: Mapped[str | None] = mapped_column(Text)
 
     solved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: When any export of this plan was first served.
+    #:
+    #: First, not last: the question it answers is whether the athlete has
+    #: this in their hands, and that does not become more true on the fourth
+    #: download. Null means no export has been served — never back-filled,
+    #: because a guessed history is worse than an absent one.
+    first_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: sha256 of the canonical SolveInput. Identical hash implies
     #: byte-identical output, which is what makes a re-solve skippable.
     solve_input_hash: Mapped[str | None] = mapped_column(Text)

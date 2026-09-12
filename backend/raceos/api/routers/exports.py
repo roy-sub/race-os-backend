@@ -13,6 +13,7 @@ must not be readable by anyone holding a plan id.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -64,6 +65,12 @@ def _context(
         race_id=plan.race_id,
         settings=settings,
     )
+    # Every export route reaches the file through here, so this is the one
+    # place the fact can be recorded without a route being forgotten. Set once
+    # and never updated: see the `first_exported_at` migration for why.
+    if plan.first_exported_at is None:
+        plan.first_exported_at = datetime.now(UTC)
+        session.commit()
     return export_service.load_context(session, plan=plan)
 
 
