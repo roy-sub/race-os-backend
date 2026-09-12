@@ -327,3 +327,124 @@ def test_downsampling_keeps_the_finish(seeded, api: TestClient, api_db) -> None:
     assert reduced[0] == full[0]
     assert reduced[-1] == full[-1]
     assert len(reduced) <= 51
+
+
+# ---------------------------------------------------------------------------
+# The live forecast
+# ---------------------------------------------------------------------------
+
+
+def _enter_race(api: TestClient, headers, *, days_away: int) -> str:
+    event_date = (datetime.now(UTC).date() + timedelta(days=days_away)).isoformat()
+    created = api.post(
+        "/api/v1/races",
+        headers=headers,
+        json={
+            "course_ref": "tramuntana-full",
+            "event_date": event_date,
+            "start_time_local": "07:00",
+        },
+    )
+    assert created.status_code in (200, 201), created.text
+    return str(created.json()["id"])
+
+
+@needs_bundle
+def test_a_race_further_out_than_the_horizon_says_so_rather_than_failing(
+    seeded, api: TestClient
+) -> None:
+    """Beyond the horizon a forecast is noise. Saying "come back later" is a
+    different screen from "the provider is down", so the reason is returned."""
+    race_id = _enter_race(api, seeded, days_away=120)
+
+    response = api.get(f"/api/v1/races/{race_id}/forecast", headers=seeded)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is False
+    assert body["unavailable_reason"] == "beyond_horizon"
+    # The two numbers that let the UI say when to come back, rather than guess.
+    assert body["days_away"] == 120
+    assert body["horizon_hours"] > 0
+
+
+@needs_bundle
+def test_an_unreachable_provider_is_not_an_error_on_this_endpoint(seeded, api: TestClient) -> None:
+    """A forecast is an improvement to a plan, never a precondition for one.
+
+    The suite runs with no network, so this is the real outage path rather
+    than a simulated one.
+    """
+    race_id = _enter_race(api, seeded, days_away=3)
+
+    response = api.get(f"/api/v1/races/{race_id}/forecast", headers=seeded)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is False
+    assert body["unavailable_reason"] == "provider_unavailable"
+    assert body["temp_c"] is None
+
+
+@needs_bundle
+def test_a_cached_forecast_is_served_with_the_hour_it_is_for(
+    seeded, api: TestClient, api_db, api_settings
+) -> None:
+    """The reading is for the race's **start hour**, not for now — a forecast
+    for 3 a.m. would be no use to an athlete starting at seven."""
+    from raceos.services import weather_service
+
+    race_id = _enter_race(api, seeded, days_away=2)
+    race = api_db.get(Race, UUID(race_id))
+    course = api_db.get(Course, race.course_id)
+
+    # Seed the cache the way a successful provider call would have.
+    from zoneinfo import ZoneInfo
+
+    start_utc = datetime.combine(
+        race.event_date, race.start_time_local, tzinfo=ZoneInfo(course.timezone)
+    ).astimezone(UTC)
+    weather_service.write_cache(
+        api_db,
+        weather_service._cache_key(
+            float(course.lat), float(course.lng), start_utc.date(), start_utc.hour
+        ),
+        {
+            "temp_c": 27.5,
+            "humidity": 71.0,
+            "wind_speed_ms": 4.2,
+            "wind_dir_deg": 210.0,
+            "conditions": "clear",
+            "water_temp_c": 22.0,
+            "pressure_hpa": 1013.0,
+            "cloud_cover_pct": 8.0,
+        },
+        api_settings,
+    )
+    api_db.commit()
+
+    body = api.get(f"/api/v1/races/{race_id}/forecast", headers=seeded).json()
+    assert body["available"] is True
+    assert body["temp_c"] == 27.5
+    assert body["conditions"] == "clear"
+    assert body["unavailable_reason"] is None
+    assert body["for_local_time"].endswith("07:00")
+
+
+@needs_bundle
+def test_nobody_reads_another_athletes_forecast(seeded, api: TestClient) -> None:
+    """It is keyed by race, and a race belongs to one athlete."""
+    race_id = _enter_race(api, seeded, days_away=30)
+
+    other = api.post(
+        "/api/v1/auth/signup",
+        json={"email": "stranger.forecast@example.com", "password": "correct-horse-battery-42"},
+    )
+    assert other.status_code in (200, 201), other.text
+    intruder = {"Authorization": f"Bearer {other.json()['access_token']}"}
+
+    assert api.get(f"/api/v1/races/{race_id}/forecast", headers=intruder).status_code == 404
+
+
+@needs_bundle
+def test_the_forecast_endpoint_rejects_an_absent_token(seeded, api: TestClient) -> None:
+    race_id = _enter_race(api, seeded, days_away=30)
+    assert api.get(f"/api/v1/races/{race_id}/forecast").status_code == 401

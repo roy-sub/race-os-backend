@@ -68,3 +68,46 @@ class RaceOut(BaseModel):
     #: instead of offering to start one that already exists.
     plan_id: UUID | None = None
     plan_status: str | None = None
+
+
+class ForecastOut(BaseModel):
+    """The forecast for a race's start hour, as it stands right now.
+
+    Deliberately **not** the plan's ``forecast_snapshot``. That one is frozen
+    at solve time and must stay frozen — Law 3 says a plan's numbers do not
+    change under the athlete. This is the live reading beside it, so the
+    difference between the two is visible and the athlete can decide whether
+    to re-solve.
+
+    ``available`` is false rather than the response being a 404, because "no
+    forecast" is an ordinary, expected state with several ordinary causes, and
+    each of them wants different words on the screen. A 404 would say the race
+    does not exist.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    available: bool
+    #: Why there is no forecast, when there is none. One of
+    #: ``beyond_horizon`` (the race is further out than a forecast means
+    #: anything), ``provider_unavailable``, or ``course_unlocatable``.
+    unavailable_reason: str | None = None
+    #: How many days out the race is. Present even when the forecast is not,
+    #: because "twelve days out" is the explanation for `beyond_horizon`.
+    days_away: int | None = None
+    #: The horizon this deployment trusts, in hours. Returned so the UI can
+    #: say when to come back rather than guessing.
+    horizon_hours: int | None = None
+
+    temp_c: float | None = None
+    humidity: float | None = None
+    wind_speed_ms: float | None = None
+    wind_dir_deg: float | None = None
+    conditions: str | None = None
+    water_temp_c: float | None = None
+    pressure_hpa: float | None = None
+    cloud_cover_pct: float | None = None
+
+    #: The local date and hour this forecast is for — the race's start hour,
+    #: not "now". A forecast for 3 a.m. would be no use to a 07:00 start.
+    for_local_time: str | None = None

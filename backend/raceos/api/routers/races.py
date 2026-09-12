@@ -18,12 +18,12 @@ from uuid import UUID
 from fastapi import APIRouter, status
 from sqlalchemy import select
 
-from raceos.api.deps import CurrentUser, DbSession
+from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.errors import Conflict, InvalidInput, NotFound
-from raceos.api.schemas.race import RaceCreate, RaceOut, RaceUpdate
+from raceos.api.schemas.race import ForecastOut, RaceCreate, RaceOut, RaceUpdate
 from raceos.db.models import Course, CourseBundle, Plan, Race
 from raceos.domain.enums import CourseAvailability, PlanStatus, RaceStatus
-from raceos.services import course_service
+from raceos.services import course_service, weather_service
 
 router = APIRouter(prefix="/api/v1/races", tags=["races"])
 
@@ -146,6 +146,59 @@ def _owned(session: DbSession, race_id: UUID, user: CurrentUser) -> Race:
 @router.get("/{race_id}", summary="One race")
 def get_race(race_id: UUID, session: DbSession, user: CurrentUser) -> RaceOut:
     return _out(session, _owned(session, race_id, user), datetime.now(UTC).date())
+
+
+@router.get("/{race_id}/forecast", summary="The live forecast for this race's start hour")
+def get_race_forecast(
+    race_id: UUID, session: DbSession, user: CurrentUser, settings: Config
+) -> ForecastOut:
+    """The forecast as it stands **now**, beside the one the plan was solved on.
+
+    A solved plan freezes its ``forecast_snapshot`` and keeps it frozen — Law 3
+    says a plan's numbers do not change under the athlete. That is the right
+    behaviour and it leaves a gap: nothing showed what the weather is actually
+    doing, so an athlete could not see that the plan they are holding was
+    solved against a forecast that has since moved eight degrees. This closes
+    it without touching the plan.
+
+    Never 4xx for an absent forecast. "No forecast" is an ordinary state with
+    three ordinary causes, each of which wants different words on the screen,
+    and a 404 here would say the race does not exist.
+
+    The response commits because ``fetch_forecast`` writes the provider's reply
+    into the TTL cache. That is a read-through cache doing its job on a GET,
+    not a mutation: dropping the write would re-fetch on every render.
+    """
+    race = _owned(session, race_id, user)
+    days_away = (race.event_date - datetime.now(UTC).date()).days
+    base = ForecastOut(
+        available=False,
+        days_away=days_away,
+        horizon_hours=settings.weather_forecast_horizon_hours,
+    )
+
+    course = session.get(Course, race.course_id)
+    if course is None:  # pragma: no cover - FK RESTRICT
+        return base.model_copy(update={"unavailable_reason": "course_unlocatable"})
+
+    snapshot = weather_service.fetch_for_race(session, race=race, settings=settings)
+    if snapshot is None:
+        session.commit()
+        reason = (
+            "beyond_horizon"
+            if days_away * 24 > settings.weather_forecast_horizon_hours
+            else "provider_unavailable"
+        )
+        return base.model_copy(update={"unavailable_reason": reason})
+
+    session.commit()
+    return ForecastOut(
+        available=True,
+        days_away=days_away,
+        horizon_hours=settings.weather_forecast_horizon_hours,
+        for_local_time=(f"{race.event_date.isoformat()} {race.start_time_local.strftime('%H:%M')}"),
+        **snapshot,
+    )
 
 
 @router.patch("/{race_id}", summary="Correct a date, time or bib")
