@@ -9,7 +9,7 @@
 
 ## Pending
 - A5
-- A9
+
 - B3
 - B7
 - B8
