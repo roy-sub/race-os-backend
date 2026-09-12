@@ -32,6 +32,20 @@ def format_hm(minutes: float | None) -> str | None:
     return f"{total // 60}:{total % 60:02d}"
 
 
+def format_ms(minutes: float | None) -> str | None:
+    """`6.4` -> `"6:24"`. Minutes and seconds, for a duration under an hour.
+
+    Transitions are the only durations in a plan short enough that the seconds
+    matter: rendering 6.4 minutes through :func:`format_hm` gives ``"0:06"``,
+    which throws away the part an athlete standing in a transition tent is
+    actually counting.
+    """
+    if minutes is None:
+        return None
+    total_seconds = int(round(minutes * 60))
+    return f"{total_seconds // 60}:{total_seconds % 60:02d}"
+
+
 class PlanCreate(BaseModel):
     race_id: UUID
 
@@ -177,6 +191,13 @@ class PlanSummary(BaseModel):
     goal_minutes: float | None
     projected_minutes: float | None
     projected_label: str | None = None
+    #: The two transitions, as solved. `None` on a draft, and on any plan
+    #: solved before they were stored — a guessed split would print with the
+    #: same authority as a solved one.
+    t1_minutes: float | None = None
+    t2_minutes: float | None = None
+    t1_label: str | None = None
+    t2_label: str | None = None
     feasibility: Feasibility
     worst_margin_minutes: float | None
     binding_constraint_key: str | None

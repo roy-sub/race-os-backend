@@ -46,6 +46,12 @@ class PlanRenderData:
     projected_label: str
     feasibility: str
     splits: list[dict[str, Any]]
+    #: ``{"name": "T1", "after": "SWIM", "label": "9:00"}`` for each transition
+    #: that was solved. Kept beside the leg splits rather than mixed into them
+    #: because a transition has no distance, no target and no unit — the three
+    #: columns a split row is otherwise made of. The renderer interleaves them
+    #: so the printed ladder reads in the order the race is run.
+    transitions: list[dict[str, Any]]
     gates: list[dict[str, Any]]
     segments: list[dict[str, Any]]
     fuelling: dict[str, Any]
@@ -128,6 +134,10 @@ def _base_css() -> str:
       font-weight: 700; display: inline-block; min-width: 4mm;
     }}
     .reason {{ color: {tokens.MUTED}; font-size: 8pt; }}
+    /* A transition is a row in the ladder but not a leg. Set in the muted
+       ink rather than given a tint, because this artefact has to survive a
+       monochrome print — the same reason every gate carries a glyph. */
+    tr.transition td {{ color: {tokens.MUTED}; font-size: 8.5pt; }}
     #provenance {{
       position: running(provenance);
       font-size: 6.5pt; color: {tokens.MUTED};
@@ -148,14 +158,33 @@ def race_card_html(data: PlanRenderData) -> str:
     a glyph, that the provenance footer is present — without parsing a PDF
     to get back to text that was already text.
     """
-    split_rows = "".join(
-        f"<tr><td><strong>{escape(str(s['leg']))}</strong></td>"
-        f"<td class='num'>{s['distance']:.1f} km</td>"
-        f"<td class='num'>{escape(str(s['target_pace_or_power']))}{escape(str(s['unit']))}</td>"
-        f"<td class='num'>{escape(str(s.get('split_label') or ''))}</td>"
-        f"<td class='reason'>{escape(str(s.get('note') or ''))}</td></tr>"
-        for s in data.splits
-    )
+    # Swim, T1, bike, T2, run — the order the race is actually run in, so the
+    # printed ladder adds up to the projected time on the same page. A
+    # transition with no solved value is simply absent rather than shown as a
+    # dash: a plan solved before transitions were stored has no number, and an
+    # empty row would read as "no transition".
+    after_leg: dict[str, list[dict[str, Any]]] = {}
+    for transition in data.transitions:
+        after_leg.setdefault(str(transition["after"]), []).append(transition)
+
+    rows: list[str] = []
+    for s in data.splits:
+        rows.append(
+            f"<tr><td><strong>{escape(str(s['leg']))}</strong></td>"
+            f"<td class='num'>{s['distance']:.1f} km</td>"
+            f"<td class='num'>{escape(str(s['target_pace_or_power']))}"
+            f"{escape(str(s['unit']))}</td>"
+            f"<td class='num'>{escape(str(s.get('split_label') or ''))}</td>"
+            f"<td class='reason'>{escape(str(s.get('note') or ''))}</td></tr>"
+        )
+        for transition in after_leg.get(str(s["leg"]), []):
+            rows.append(
+                f"<tr class='transition'><td>{escape(str(transition['name']))}</td>"
+                f"<td class='num'>&mdash;</td><td class='num'>&mdash;</td>"
+                f"<td class='num'>{escape(str(transition['label']))}</td>"
+                f"<td class='reason'>{escape(str(transition.get('note') or ''))}</td></tr>"
+            )
+    split_rows = "".join(rows)
 
     gate_rows = "".join(
         f"<tr><td>{escape(str(g['name']).replace('_', ' '))}</td>"

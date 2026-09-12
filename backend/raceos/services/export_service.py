@@ -107,6 +107,7 @@ def build_render_data(context: ExportContext, detail: PlanDetail) -> PlanRenderD
         projected_label=detail.projected_label or format_hm(plan.projected_minutes) or "—",
         feasibility=plan.feasibility.value,
         splits=[split.model_dump(mode="json") for split in detail.splits],
+        transitions=_transition_rows(detail),
         gates=[gate.model_dump(mode="json") for gate in detail.gates],
         segments=[segment.model_dump(mode="json") for segment in detail.segments],
         fuelling=fuelling,
@@ -115,6 +116,35 @@ def build_render_data(context: ExportContext, detail: PlanDetail) -> PlanRenderD
         constraint_refs=[ref.model_dump(mode="json") for ref in detail.constraint_refs],
         assumed_fields=list(plan.assumed_fields or []),
     )
+
+
+def _transition_rows(detail: PlanDetail) -> list[dict[str, Any]]:
+    """T1 and T2 as print rows, positioned by the leg they follow.
+
+    Absent when the plan has no solved value for them — a draft, or a plan
+    solved before transitions were stored. An empty row in the ladder would
+    read as "no transition", which is worse than not printing one.
+    """
+    rows: list[dict[str, Any]] = []
+    if detail.t1_label is not None:
+        rows.append(
+            {
+                "name": "T1",
+                "after": Leg.SWIM.value,
+                "label": detail.t1_label,
+                "note": "Swim to bike",
+            }
+        )
+    if detail.t2_label is not None:
+        rows.append(
+            {
+                "name": "T2",
+                "after": Leg.BIKE.value,
+                "label": detail.t2_label,
+                "note": "Bike to run",
+            }
+        )
+    return rows
 
 
 # ---------------------------------------------------------------------------

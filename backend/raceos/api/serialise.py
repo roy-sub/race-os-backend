@@ -24,6 +24,7 @@ from raceos.api.schemas.plan import (
     SegmentOut,
     SplitOut,
     format_hm,
+    format_ms,
 )
 from raceos.db.models import (
     Course,
@@ -69,6 +70,11 @@ def _with_drawer_copy(ref: ConstraintRefOut) -> ConstraintRefOut:
 def plan_summary(plan: Plan) -> PlanSummary:
     out = PlanSummary.model_validate(plan)
     out.projected_label = format_hm(plan.projected_minutes)
+    # `M:SS`, not the `H:MM` the leg splits use: a transition is minutes and
+    # seconds, and rendering 6.4 minutes as "0:06" throws away the part an
+    # athlete in a transition tent actually cares about.
+    out.t1_label = format_ms(plan.t1_minutes)
+    out.t2_label = format_ms(plan.t2_minutes)
     return out
 
 

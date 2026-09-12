@@ -540,3 +540,57 @@ def test_an_unsolved_draft_is_not_warned_about_its_missing_forecast(
         f"/api/v1/plans/{ready_athlete['plan_id']}", headers=ready_athlete["headers"]
     ).json()
     assert [w for w in body["warnings"] if w["code"] == "PARTIAL_DATA"] == []
+
+
+# ---------------------------------------------------------------------------
+# Transitions
+# ---------------------------------------------------------------------------
+
+
+@needs_bundle
+def test_a_solved_plan_returns_both_transitions_separately(ready_athlete, api: TestClient) -> None:
+    """Total transition time was always recoverable by subtraction. T1 and T2
+    individually were not, and T1 is the one that carries the wetsuit strip."""
+    solved = api.post(
+        f"/api/v1/plans/{ready_athlete['plan_id']}/solve",
+        headers=ready_athlete["headers"],
+        json={},
+    )
+    assert solved.status_code == 200, solved.text
+    plan = solved.json()
+
+    assert plan["t1_minutes"] > 0
+    assert plan["t2_minutes"] > 0
+    # `M:SS`, not `H:MM` — the seconds are the part that matters here.
+    assert ":" in (plan["t1_label"] or "")
+    assert ":" in (plan["t2_label"] or "")
+
+
+@needs_bundle
+def test_the_splits_and_transitions_account_for_the_whole_projection(
+    ready_athlete, api: TestClient
+) -> None:
+    """Swim + T1 + bike + T2 + run is the projection, to the rounding the
+    solver applies. A ladder that does not add up is a ladder nobody trusts."""
+    plan = api.post(
+        f"/api/v1/plans/{ready_athlete['plan_id']}/solve",
+        headers=ready_athlete["headers"],
+        json={},
+    ).json()
+
+    ladder = sum(s["split_minutes"] for s in plan["splits"])
+    ladder += plan["t1_minutes"] + plan["t2_minutes"]
+    # Each part is rounded to the solver's minutes precision independently, so
+    # the sum can differ from the total by the accumulated rounding and no more.
+    assert abs(ladder - plan["projected_minutes"]) < 0.05
+
+
+@needs_bundle
+def test_an_unsolved_draft_has_no_transitions(ready_athlete, api: TestClient) -> None:
+    """Null, not zero. Zero would mean the athlete teleported."""
+    plan = api.get(
+        f"/api/v1/plans/{ready_athlete['plan_id']}", headers=ready_athlete["headers"]
+    ).json()
+    assert plan["t1_minutes"] is None
+    assert plan["t2_minutes"] is None
+    assert plan["t1_label"] is None

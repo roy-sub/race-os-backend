@@ -872,6 +872,8 @@
         "unit": "/km"
       }
     ],
+    "t1_minutes": "6.5",
+    "t2_minutes": "6.0",
     "wetsuit_used": false,
     "wetsuit_warning": true,
     "worst_margin_minutes": "65.8"

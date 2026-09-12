@@ -265,6 +265,7 @@ def _render_data(**overrides):
         "projected_label": "10:41",
         "feasibility": "TIGHT",
         "splits": [],
+        "transitions": [],
         "gates": [],
         "segments": [],
         "fuelling": {},
@@ -440,3 +441,66 @@ def test_another_athlete_cannot_download_this_plan(
     headers = {"Authorization": f"Bearer {other['access_token']}"}
     response = api.get(f"/api/v1/plans/{solved_plan['plan_id']}{suffix}", headers=headers)
     assert response.status_code == 403
+
+
+@needs_bundle
+def test_the_printed_ladder_reads_in_the_order_the_race_is_run(
+    solved_plan, api: TestClient
+) -> None:
+    """Swim, T1, bike, T2, run — so the splits on the page add up to the
+    projected time printed above them.
+
+    Before transitions were stored the ladder went swim, bike, run and simply
+    did not account for the twelve-odd minutes between them.
+    """
+    from raceos.exports.pdf import race_card_html
+
+    data = _render_data(
+        splits=[
+            {
+                "leg": "SWIM",
+                "distance": 3.8,
+                "target_pace_or_power": "1:45",
+                "unit": "/100m",
+                "split_label": "1:06",
+                "note": "Wetsuit",
+            },
+            {
+                "leg": "BIKE",
+                "distance": 180.0,
+                "target_pace_or_power": "208",
+                "unit": "w",
+                "split_label": "5:24",
+                "note": "0.68 IF",
+            },
+            {
+                "leg": "RUN",
+                "distance": 42.2,
+                "target_pace_or_power": "5:38",
+                "unit": "/km",
+                "split_label": "3:58",
+                "note": "",
+            },
+        ],
+        transitions=[
+            {"name": "T1", "after": "SWIM", "label": "9:00", "note": "Swim to bike"},
+            {"name": "T2", "after": "BIKE", "label": "6:00", "note": "Bike to run"},
+        ],
+    )
+    html = race_card_html(data)
+    order = [html.index(marker) for marker in ("SWIM", "T1", "BIKE", "T2", "RUN")]
+    assert order == sorted(order), "the ladder is out of race order"
+    assert "9:00" in html
+    assert "6:00" in html
+
+
+@needs_bundle
+def test_a_plan_without_solved_transitions_prints_no_transition_rows(
+    solved_plan, api: TestClient
+) -> None:
+    """An empty row would read as "no transition", which is not what absent
+    means: it means this plan predates the column and has no number."""
+    from raceos.exports.pdf import race_card_html
+
+    html = race_card_html(_render_data(transitions=[]))
+    assert "class='transition'" not in html

@@ -69,6 +69,13 @@ def race_mode(
             "projected_label": detail.get("projected_label"),
             "feasibility": plan.feasibility.value,
             "splits": detail.get("splits", []),
+            # T1 and T2 travel too. Race Mode is read in a transition tent
+            # with no signal, which is the one place the split between them
+            # is the number being looked at.
+            "t1_minutes": detail.get("t1_minutes"),
+            "t2_minutes": detail.get("t2_minutes"),
+            "t1_label": detail.get("t1_label"),
+            "t2_label": detail.get("t2_label"),
             "segments": detail.get("segments", []),
             "gates": detail.get("gates", []),
             "fuelling": detail.get("fuelling"),

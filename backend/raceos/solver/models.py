@@ -374,6 +374,18 @@ class SolveOutput:
     feasibility: Feasibility
     projected_minutes: float
     splits: tuple[Split, ...]
+    #: The two transitions, in minutes, as solved.
+    #:
+    #: Returned rather than left to be recovered by subtracting the three leg
+    #: splits from ``projected_minutes``: that subtraction yields the *total*
+    #: transition time and cannot separate T1 from T2, and T1 is the one that
+    #: carries the wetsuit strip. They are not ``Split`` rows because a
+    #: transition is not a leg the solver paces — it has no distance, no
+    #: target and no unit, and widening :class:`~raceos.domain.enums.Leg` to
+    #: hold them would put ``T1`` in front of every segment, gate, aid action
+    #: and bag rule that reads that enum.
+    t1_minutes: float
+    t2_minutes: float
     segments: tuple[Segment, ...]
     gates: tuple[Gate, ...]
     fuelling: Fuelling

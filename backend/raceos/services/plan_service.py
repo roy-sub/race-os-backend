@@ -517,6 +517,8 @@ def _persist(
     solved.solved_at = _now()
     solved.solve_input_hash = input_hash
     solved.projected_minutes = output.projected_minutes
+    solved.t1_minutes = output.t1_minutes
+    solved.t2_minutes = output.t2_minutes
     solved.feasibility = output.feasibility
     solved.worst_margin_minutes = output.worst_margin_minutes
     solved.binding_constraint_key = output.binding_constraint_key
