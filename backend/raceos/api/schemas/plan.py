@@ -68,6 +68,12 @@ class SolveRequest(BaseModel):
     force: bool = False
 
 
+class DuplicateRequest(BaseModel):
+    """Which race to set up. Never this plan's own — a race holds one plan."""
+
+    race_id: UUID
+
+
 class OverrideRequest(BaseModel):
     constraint_key: str
     new_value: float

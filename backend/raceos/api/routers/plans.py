@@ -23,6 +23,7 @@ from raceos.api.deps import Config, CurrentUser, DbSession, Warnings
 from raceos.api.errors import NotFound, WarningCollector
 from raceos.api.schemas.common import ResponseWarningOut
 from raceos.api.schemas.plan import (
+    DuplicateRequest,
     OverrideRequest,
     PlanCreate,
     PlanDetail,
@@ -244,6 +245,26 @@ def resolve_plan(
         session, plan=result.plan, warnings=warnings, settings=settings
     )
     return _with_warnings(plan_detail(session, result.plan), warnings)
+
+
+@router.post(
+    "/{plan_id}/duplicate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Set up another race the way this one was set up",
+)
+def duplicate_plan(
+    plan_id: UUID, payload: DuplicateRequest, session: DbSession, user: CurrentUser
+) -> PlanDetail:
+    """Copies the goal and risk onto a draft for another race.
+
+    Never the solved numbers: splits, feasibility and the forecast belong to
+    the solve that produced them and to the course it was produced for. The
+    result is a draft, unsolved and uncharged.
+    """
+    plan = plan_service.get_plan(session, plan_id=plan_id, user=user)
+    draft = plan_service.duplicate(session, plan=plan, user=user, race_id=payload.race_id)
+    session.commit()
+    return plan_detail(session, draft)
 
 
 @router.post("/{plan_id}/override", summary="Log a constraint override")

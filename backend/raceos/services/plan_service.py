@@ -356,6 +356,66 @@ def patch_draft(session: Session, *, plan: Plan, user: User, changes: dict[str, 
     return plan
 
 
+#: The draft inputs a duplicate carries over. Deliberately a short list, and
+#: deliberately not the results: a copied plan inherits what the athlete
+#: *chose*, never what a solve *produced*.
+DUPLICABLE_SCRATCH = ("risk", "night_flag")
+
+
+def duplicate(session: Session, *, plan: Plan, user: User, race_id: UUID) -> Plan:
+    """Set up another race the way this one was set up.
+
+    **Onto a different race, because the schema forbids anything else.** A race
+    holds one draft and one active version at a time, so "duplicate" cannot
+    mean a second plan beside this one. What it means is the thing an athlete
+    actually wants: *I raced Kalmar like this; set Roth up the same way.*
+
+    What travels is the goal and the risk setting — the inputs the athlete
+    chose. What does not travel is every number the solver produced: splits,
+    feasibility, projected time, the forecast snapshot, the constraint
+    references. Those belong to the solve that made them and to the course it
+    was made for, and carrying them onto a different race would attach a
+    Mallorca profile to a flat course and still call it provenance.
+
+    The result is always a draft. Nothing is solved and nothing is charged
+    here; the athlete solves it when they are ready, against the target race's
+    own bundle and their constraints as they stand then.
+    """
+    require_owner(plan, user)
+
+    target = session.get(Race, race_id)
+    if target is None or target.user_id != user.id:
+        raise NotFound("Race not found.")
+    if target.id == plan.race_id:
+        raise Conflict(
+            "A race holds one plan at a time. To try a variation on this race, "
+            "edit the draft and solve again — that makes a new version and "
+            "keeps the old one.",
+            details={"race_id": str(race_id)},
+        )
+
+    draft = create_draft(session, user=user, race_id=race_id)
+    draft.goal_minutes = plan.goal_minutes
+
+    source = dict(plan.constraints_snapshot or {})
+    scratch = dict(draft.constraints_snapshot or {})
+    for key in DUPLICABLE_SCRATCH:
+        if key in source:
+            scratch[key] = source[key]
+    draft.constraints_snapshot = scratch
+    session.flush()
+
+    logger.info(
+        "plan.duplicated",
+        extra={
+            "source_plan_id": str(plan.id),
+            "target_race_id": str(race_id),
+            "draft_plan_id": str(draft.id),
+        },
+    )
+    return draft
+
+
 def require_owner(plan: Plan, user: User) -> None:
     if plan.user_id != user.id:
         raise Forbidden("This plan belongs to another athlete.")
