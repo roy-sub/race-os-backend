@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.orm import Session
 
 from raceos.api.errors import Conflict, Forbidden, InvalidInput, NotFound
@@ -38,9 +38,12 @@ from raceos.db.models import (
     User,
 )
 from raceos.domain.enums import (
+    AccountState,
     AdminRole,
     CrowdConfidence,
     CrowdStatus,
+    CurationStatus,
+    Currency,
     IncidentSeverity,
     NotificationSeverity,
     NotificationType,
@@ -692,3 +695,639 @@ def _phrasing_provider(settings: Settings) -> dict[str, Any]:
     from raceos.services import phrasing_service
 
     return phrasing_service.describe_provider(settings)
+
+
+# ---------------------------------------------------------------------------
+# Account administration
+# ---------------------------------------------------------------------------
+#
+# The line this surface must not cross
+# ------------------------------------
+# Everything below reports *account* facts: who holds an account, what they
+# pay, what roles they hold, what state the account is in. It reports no
+# athlete content — no plans, no races, no constraints, no physiology, no
+# emergency contact.
+#
+# That is not a tidiness preference. Support access is consent-gated: an agent
+# sees an athlete's data only after that athlete approves, for one hour, and
+# every read is appended to a log the athlete can open. An admin list that
+# quietly carried plans or measurements would be a second door into the same
+# room with none of the lock on it, and the athlete would never know it had
+# been used. `support_summary` stays the only way to athlete content, and it
+# still demands a live grant.
+#
+# The one identifier here that is personal — the email address — is the thing
+# an operator searches by, so a user-administration screen cannot do its job
+# without it. A test asserts the rest stays out.
+
+
+#: Fields an athlete owns that must never appear in an admin account view.
+#: Named rather than implied so the test that enforces it reads as a list of
+#: promises rather than a regex.
+WITHHELD_FROM_ACCOUNT_VIEW = (
+    "date_of_birth",
+    "emergency_contact_name",
+    "emergency_contact_phone",
+    "password_hash",
+    "avatar_url",
+)
+
+#: A page of accounts. Large enough to scan, small enough to stay one query.
+ACCOUNT_PAGE_SIZE = 50
+
+
+@dataclass(frozen=True)
+class AccountRow:
+    """One account as the administration screen sees it."""
+
+    id: UUID
+    email: str
+    name: str | None
+    tier: UserTier
+    account_state: AccountState
+    is_coach: bool
+    email_verified: bool
+    roles: tuple[AdminRole, ...]
+    created_at: datetime
+    subscription_status: SubscriptionStatus | None
+
+
+def _roles_by_user(session: Session, user_ids: list[UUID]) -> dict[UUID, tuple[AdminRole, ...]]:
+    """One query for the whole page rather than one per row."""
+    from raceos.db.models import AdminRoleAssignment
+
+    if not user_ids:
+        return {}
+    grouped: dict[UUID, list[AdminRole]] = {}
+    rows = session.execute(
+        select(AdminRoleAssignment.user_id, AdminRoleAssignment.role).where(
+            AdminRoleAssignment.user_id.in_(user_ids)
+        )
+    )
+    for user_id, role in rows:
+        grouped.setdefault(user_id, []).append(role)
+    return {key: tuple(sorted(value, key=lambda r: r.value)) for key, value in grouped.items()}
+
+
+def _live_subscription_by_user(
+    session: Session, user_ids: list[UUID]
+) -> dict[UUID, SubscriptionStatus]:
+    """The status that matters per account, worst-case first.
+
+    An account can carry more than one subscription row over its life. What an
+    operator needs on a list is whether money is currently moving, so an
+    active row wins over a past-due one and both win over a cancelled one.
+    """
+    from raceos.db.models import Subscription
+
+    if not user_ids:
+        return {}
+    rank = {
+        SubscriptionStatus.ACTIVE: 0,
+        SubscriptionStatus.PAST_DUE: 1,
+        SubscriptionStatus.CANCELLED: 2,
+    }
+    best: dict[UUID, SubscriptionStatus] = {}
+    rows = session.execute(
+        select(Subscription.user_id, Subscription.status).where(Subscription.user_id.in_(user_ids))
+    )
+    for user_id, status in rows:
+        current = best.get(user_id)
+        if current is None or rank[status] < rank[current]:
+            best[user_id] = status
+    return best
+
+
+def search_accounts(
+    session: Session,
+    *,
+    query: str | None = None,
+    tier: UserTier | None = None,
+    role: AdminRole | None = None,
+    state: AccountState | None = None,
+    limit: int = ACCOUNT_PAGE_SIZE,
+    offset: int = 0,
+) -> tuple[list[AccountRow], int]:
+    """Find an account. Returns the page and the true total behind it.
+
+    The total is the count of everything matching, not the length of the page,
+    so an operator can tell "three results" from "the first three of nine
+    hundred" — the distinction that decides whether searching harder is worth
+    it.
+    """
+    from raceos.db.models import AdminRoleAssignment
+
+    clauses: list[ColumnElement[bool]] = []
+    if query:
+        pattern = f"%{query.strip()}%"
+        clauses.append(User.email.ilike(pattern) | User.name.ilike(pattern))
+    if tier is not None:
+        clauses.append(User.tier == tier)
+    if state is not None:
+        clauses.append(User.account_state == state)
+    if role is not None:
+        clauses.append(
+            User.id.in_(
+                select(AdminRoleAssignment.user_id).where(AdminRoleAssignment.role == role)
+            )
+        )
+
+    total = int(session.scalar(select(func.count()).select_from(User).where(*clauses)) or 0)
+    users = list(
+        session.scalars(
+            select(User)
+            .where(*clauses)
+            .order_by(User.created_at.desc(), User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+
+    ids = [user.id for user in users]
+    roles = _roles_by_user(session, ids)
+    subscriptions = _live_subscription_by_user(session, ids)
+
+    rows = [
+        AccountRow(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            tier=user.tier,
+            account_state=user.account_state,
+            is_coach=user.is_coach,
+            email_verified=user.email_verified_at is not None,
+            roles=roles.get(user.id, ()),
+            created_at=user.created_at,
+            subscription_status=subscriptions.get(user.id),
+        )
+        for user in users
+    ]
+    return rows, total
+
+
+def account_detail(session: Session, *, user_id: UUID) -> dict[str, Any]:
+    """One account, in administration terms.
+
+    The counts are counts. A plan total tells an operator whether an account
+    is in use without telling them what any plan says, which is the whole
+    distinction this surface is built on.
+    """
+    from raceos.db.models import Invoice, Subscription
+
+    user = session.get(User, user_id)
+    if user is None:
+        raise NotFound("User not found.")
+
+    subscriptions = list(
+        session.scalars(
+            select(Subscription)
+            .where(Subscription.user_id == user_id)
+            .order_by(Subscription.created_at.desc())
+        )
+    )
+    invoiced = session.execute(
+        select(Invoice.currency, func.sum(Invoice.amount_cents), func.count())
+        .where(Invoice.user_id == user_id)
+        .group_by(Invoice.currency)
+    ).all()
+    plan_count = int(
+        session.scalar(select(func.count()).select_from(Plan).where(Plan.user_id == user_id)) or 0
+    )
+    grants = int(
+        session.scalar(
+            select(func.count())
+            .select_from(SupportAccessGrant)
+            .where(SupportAccessGrant.athlete_id == user_id)
+        )
+        or 0
+    )
+
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "tier": user.tier.value,
+        "account_state": user.account_state.value,
+        "is_coach": user.is_coach,
+        "email_verified": user.email_verified_at is not None,
+        "created_at": user.created_at.isoformat(),
+        "roles": [role.value for role in _roles_by_user(session, [user_id]).get(user_id, ())],
+        "subscriptions": [
+            {
+                "id": str(row.id),
+                "tier": row.tier.value,
+                "status": row.status.value,
+                "renews_at": row.renews_at.isoformat() if row.renews_at else None,
+                "cancel_at": row.cancel_at.isoformat() if row.cancel_at else None,
+            }
+            for row in subscriptions
+        ],
+        # Per currency, never summed. See `revenue` for why.
+        "invoiced": [
+            {"currency": currency.value, "amount_cents": int(total or 0), "count": int(count)}
+            for currency, total, count in invoiced
+        ],
+        "plan_count": plan_count,
+        "support_grant_count": grants,
+        # Said out loud so an operator does not read the absence of plans as
+        # an empty account and go looking for a screen that shows them.
+        "athlete_data": (
+            "Not shown here. Athlete content requires a support-access grant "
+            "the athlete approves, and every read of it is logged to them."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Revenue and churn
+# ---------------------------------------------------------------------------
+#
+# Why revenue is reported per currency and never summed
+# ----------------------------------------------------
+# Invoices are issued in GBP, USD or EUR, and this system stores no exchange
+# rate — not a live one, not a rate at the time of the invoice. Adding the
+# cents together would produce a number with no unit: "£1 + $1 = 2" is not a
+# fact about anything. Picking a rate to convert with would be worse, because
+# the result would look like a real total, would move when nobody changed
+# anything, and would be the figure someone quotes in a board meeting.
+#
+# So the answer is three answers, one per currency, and a caller who wants one
+# number has to supply the rate that makes it true.
+
+
+#: Refunds reduce the period they were *issued in*, not the period of the
+#: invoice they reverse. An operator reading a month wants the money that
+#: actually moved that month.
+@dataclass(frozen=True)
+class CurrencyRevenue:
+    currency: Currency
+    invoiced_cents: int
+    refunded_cents: int
+    invoice_count: int
+    refund_count: int
+
+    @property
+    def net_cents(self) -> int:
+        return self.invoiced_cents - self.refunded_cents
+
+
+def revenue(session: Session, *, days: int = 30) -> list[CurrencyRevenue]:
+    """Money invoiced and money given back, over a window, per currency.
+
+    A currency with no activity in the window is absent rather than reported
+    as zero, for the same reason a KPI with no measurement reports null: an
+    operator must be able to tell "nobody paid in euros" from "we do not sell
+    in euros", and a zero row says neither.
+    """
+    from raceos.db.models import Invoice, Refund
+
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    invoiced = {
+        currency: (int(total or 0), int(count))
+        for currency, total, count in session.execute(
+            select(Invoice.currency, func.sum(Invoice.amount_cents), func.count())
+            .where(Invoice.issued_at >= since)
+            .group_by(Invoice.currency)
+        )
+    }
+    # A refund carries no currency of its own; it inherits the invoice's,
+    # which is the only currency it could possibly be in.
+    refunded = {
+        currency: (int(total or 0), int(count))
+        for currency, total, count in session.execute(
+            select(Invoice.currency, func.sum(Refund.amount_cents), func.count())
+            .join(Invoice, Invoice.id == Refund.invoice_id)
+            .where(Refund.created_at >= since)
+            .group_by(Invoice.currency)
+        )
+    }
+
+    out = []
+    for currency in sorted(set(invoiced) | set(refunded), key=lambda c: c.value):
+        gross, invoice_count = invoiced.get(currency, (0, 0))
+        back, refund_count = refunded.get(currency, (0, 0))
+        out.append(
+            CurrencyRevenue(
+                currency=currency,
+                invoiced_cents=gross,
+                refunded_cents=back,
+                invoice_count=invoice_count,
+                refund_count=refund_count,
+            )
+        )
+    return out
+
+
+def churn(session: Session, *, days: int = 30) -> dict[str, Any]:
+    """How many subscriptions ended in the window, against how many could.
+
+    The denominator is subscriptions that existed *at the start* of the
+    window, not at the end. A month in which a hundred people signed up and
+    five of last month's fifty left is a ten per cent churn month; dividing by
+    the end-of-month hundred and fifty would report three per cent and hide
+    it. Growth must not be able to flatter retention.
+
+    Reports ``None`` rather than ``0.0`` when there was nothing to churn. A
+    rate computed from an empty denominator is not zero, it is undefined, and
+    a zero on that chart reads as a perfect month.
+
+    **The one approximation, stated rather than hidden.** No column records
+    when a subscription was cancelled, so ``updated_at`` stands in for it. Any
+    other edit to an already-cancelled row inside the window would make it
+    look like it was cancelled there. That is rare, it only ever inflates the
+    figure, and the honest fix is a ``cancelled_at`` column rather than a
+    cleverer query — see `docs/LAUNCH_BLOCKERS.md`.
+    """
+    from raceos.db.models import Subscription
+
+    now = datetime.now(UTC)
+    since = now - timedelta(days=days)
+
+    # Live when the window opened: anything not cancelled, plus the ones that
+    # were cancelled inside the window. A past-due subscription counts — it was
+    # still a subscription somebody could lose.
+    was_live_at_open = (Subscription.status != SubscriptionStatus.CANCELLED) | (
+        Subscription.updated_at >= since
+    )
+    at_risk = int(
+        session.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.created_at < since, was_live_at_open)
+        )
+        or 0
+    )
+    lost = int(
+        session.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(
+                Subscription.created_at < since,
+                Subscription.status == SubscriptionStatus.CANCELLED,
+                Subscription.updated_at >= since,
+            )
+        )
+        or 0
+    )
+
+    by_tier = {
+        tier.value: int(count)
+        for tier, count in session.execute(
+            select(Subscription.tier, func.count())
+            .where(
+                Subscription.status == SubscriptionStatus.CANCELLED,
+                Subscription.updated_at >= since,
+                Subscription.created_at < since,
+            )
+            .group_by(Subscription.tier)
+        )
+    }
+
+    return {
+        "window_days": days,
+        "subscriptions_at_risk": at_risk,
+        "subscriptions_lost": lost,
+        "churn_pct": round(lost / at_risk * 100, 2) if at_risk else None,
+        "lost_by_tier": by_tier,
+        "active_now": int(
+            session.scalar(
+                select(func.count())
+                .select_from(Subscription)
+                .where(Subscription.status == SubscriptionStatus.ACTIVE)
+            )
+            or 0
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Course curation
+# ---------------------------------------------------------------------------
+#
+# An athlete-submitted course is private to its submitter from the moment it
+# builds, and stays that way unless a reviewer says otherwise. Publishing is
+# the only act here that changes what anyone else can see, which is why it is
+# the one with a person's name attached to it.
+
+
+@dataclass(frozen=True)
+class CurationRow:
+    """One submitted course as the review queue shows it."""
+
+    course_id: UUID
+    slug: str
+    name: str
+    place: str | None
+    distance_type: str
+    event_date: date | None
+    submitted_by: UUID
+    submitted_by_email: str
+    curation_status: CurationStatus
+    curation_note: str | None
+    curated_at: datetime | None
+    created_at: datetime
+    leg_count: int
+
+
+def curation_queue(
+    session: Session,
+    *,
+    status: CurationStatus | None = CurationStatus.UNREVIEWED,
+    limit: int = ACCOUNT_PAGE_SIZE,
+    offset: int = 0,
+) -> tuple[list[CurationRow], int]:
+    """Submitted courses awaiting, or having had, a decision.
+
+    Defaults to the unreviewed ones, because that is the queue. Pass an
+    explicit status to audit what was published or declined; pass ``None`` for
+    everything an athlete has ever submitted.
+    """
+    from raceos.db.models import Course, CourseBundleLeg
+
+    clauses: list[ColumnElement[bool]] = [Course.submitted_by_user_id.is_not(None)]
+    if status is not None:
+        clauses.append(Course.curation_status == status)
+
+    total = int(session.scalar(select(func.count()).select_from(Course).where(*clauses)) or 0)
+    courses = list(
+        session.scalars(
+            select(Course)
+            .where(*clauses)
+            .order_by(Course.created_at.asc(), Course.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+    if not courses:
+        return [], total
+
+    emails: dict[UUID, str] = {}
+    for user_id, email in session.execute(
+        select(User.id, User.email).where(User.id.in_([c.submitted_by_user_id for c in courses]))
+    ):
+        emails[user_id] = email
+
+    # How many of the three legs actually built. A reviewer's first question
+    # about a submitted course is whether it is whole; `count(distinct leg)`
+    # answers it without assuming a course has exactly one bundle.
+    legs: dict[UUID, int] = {
+        course_id: int(count)
+        for course_id, count in session.execute(
+            select(CourseBundle.course_id, func.count(func.distinct(CourseBundleLeg.leg)))
+            .join(CourseBundleLeg, CourseBundleLeg.bundle_id == CourseBundle.id)
+            .where(CourseBundle.course_id.in_([c.id for c in courses]))
+            .group_by(CourseBundle.course_id)
+        )
+    }
+
+    return [
+        CurationRow(
+            course_id=course.id,
+            slug=course.slug,
+            name=course.name,
+            place=course.place,
+            distance_type=course.distance_type.value,
+            event_date=course.next_edition_date,
+            submitted_by=course.submitted_by_user_id,
+            submitted_by_email=emails.get(course.submitted_by_user_id, "(unknown)"),
+            curation_status=course.curation_status,
+            curation_note=course.curation_note,
+            curated_at=course.curated_at,
+            created_at=course.created_at,
+            leg_count=legs.get(course.id, 0),
+        )
+        for course in courses
+        if course.submitted_by_user_id is not None
+    ], total
+
+
+def _curate(
+    session: Session,
+    *,
+    actor: User,
+    settings: Settings,
+    course_id: UUID,
+    decision: CurationStatus,
+    note: str | None,
+) -> Any:
+    from raceos.db.models import Course
+
+    course = session.get(Course, course_id)
+    if course is None:
+        raise NotFound("Course not found.")
+    if course.submitted_by_user_id is None:
+        # A house course is in the catalogue by construction. Letting this
+        # endpoint "publish" one would imply it had been out, and letting it
+        # reject one would be a deletion wearing a review's clothes.
+        raise InvalidInput(
+            "That course was not submitted by an athlete, so there is nothing to review.",
+            details={"course_id": str(course_id)},
+        )
+
+    before = {
+        "curation_status": course.curation_status.value,
+        "curation_note": course.curation_note,
+    }
+    course.curation_status = decision
+    course.curation_note = note
+    course.curated_at = datetime.now(UTC)
+    course.curated_by_user_id = actor.id
+    session.flush()
+
+    session.add(
+        AuditLog(
+            actor_user_id=actor.id,
+            action=f"course.{decision.value}",
+            entity_type="course",
+            entity_id=course.id,
+            before=before,
+            after={
+                "curation_status": decision.value,
+                "curation_note": note,
+                "slug": course.slug,
+            },
+        )
+    )
+
+    submitter = session.get(User, course.submitted_by_user_id)
+    if submitter is not None:
+        published = decision is CurationStatus.PUBLISHED
+        notification_service.notify(
+            session,
+            user=submitter,
+            settings=settings,
+            type_key=NotificationType.COURSE_REVIEWED,
+            severity=NotificationSeverity.INFO,
+            title=(
+                f"{course.name} is now in the course directory"
+                if published
+                else f"{course.name} was not added to the directory"
+            ),
+            body=(
+                note
+                or (
+                    "Everyone can now plan a race on the course you added."
+                    if published
+                    else "It is still yours to plan on. Nobody else can see it."
+                )
+            ),
+            cta_label="Open the course",
+            cta_href=f"/courses/{course.slug}",
+        )
+
+    logger.info(
+        "course.curated",
+        extra={
+            "course_id": str(course.id),
+            "slug": course.slug,
+            "decision": decision.value,
+            "actor_user_id": str(actor.id),
+        },
+    )
+    return course
+
+
+def publish_course(
+    session: Session,
+    *,
+    actor: User,
+    settings: Settings,
+    course_id: UUID,
+    note: str | None = None,
+) -> Any:
+    """List a submitted course to everyone.
+
+    The submitter stays recorded on the row. Publishing does not launder a
+    course into looking like a surveyed one — `is_user_submitted` is still
+    true, and the directory still says so.
+    """
+    return _curate(
+        session,
+        actor=actor,
+        settings=settings,
+        course_id=course_id,
+        decision=CurationStatus.PUBLISHED,
+        note=note,
+    )
+
+
+def reject_course(
+    session: Session, *, actor: User, settings: Settings, course_id: UUID, note: str
+) -> Any:
+    """Decline a submitted course, with a reason.
+
+    Takes nothing away: the course stays usable by the athlete who added it,
+    and their plans against it are untouched. A reason is required because a
+    rejection an athlete cannot act on is just a wall.
+    """
+    if not note.strip():
+        raise InvalidInput("Say why it was not published. The submitter will read this.")
+    return _curate(
+        session,
+        actor=actor,
+        settings=settings,
+        course_id=course_id,
+        decision=CurationStatus.REJECTED,
+        note=note,
+    )

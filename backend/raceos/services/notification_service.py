@@ -60,6 +60,9 @@ DEFAULT_CHANNELS: dict[NotificationType, tuple[bool, bool, bool]] = {
     # notification nobody saw in time is worse than none.
     NotificationType.SUBSCRIPTION_RENEWING: (True, False, True),
     NotificationType.SUPPORT_ACCESS: (True, False, True),
+    # The athlete asked for this outcome by submitting a course, and it can
+    # arrive weeks later, so email rather than waiting for them to come back.
+    NotificationType.COURSE_REVIEWED: (True, False, True),
 }
 
 

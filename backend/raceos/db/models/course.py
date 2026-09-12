@@ -42,6 +42,7 @@ from raceos.domain.enums import (
     BundleStatus,
     CourseAvailability,
     CourseVisibility,
+    CurationStatus,
     Difficulty,
     DistanceType,
     Leg,
@@ -120,6 +121,24 @@ class Course(Entity):
     submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
     )
+    #: Whether a submitted course has been reviewed into the shared catalogue.
+    #:
+    #: Meaningless while :attr:`submitted_by_user_id` is null — a house course
+    #: is in the catalogue by construction and has nothing to review — which
+    #: is why the default is ``UNREVIEWED`` rather than ``PUBLISHED``: it says
+    #: "no review has happened", which is true of both.
+    curation_status: Mapped[CurationStatus] = mapped_column(
+        pg_enum(CurationStatus, "curation_status"),
+        nullable=False,
+        default=CurationStatus.UNREVIEWED,
+        server_default=text("'unreviewed'"),
+    )
+    #: Why a reviewer published or rejected it, in the submitter's terms.
+    curation_note: Mapped[str | None] = mapped_column(Text)
+    curated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    curated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     bundles: Mapped[list[CourseBundle]] = relationship(back_populates="course")
 
@@ -127,6 +146,7 @@ class Course(Entity):
         Index("ix_courses_distance_type", "distance_type"),
         Index("ix_courses_visibility", "visibility"),
         Index("ix_courses_submitted_by_user_id", "submitted_by_user_id"),
+        Index("ix_courses_curation_status", "curation_status"),
         CheckConstraint("lat BETWEEN -90 AND 90", name="courses_lat_range"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="courses_lng_range"),
     )

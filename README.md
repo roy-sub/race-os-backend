@@ -142,7 +142,7 @@ real key would be a broken test.
 
 ### The structural guarantees
 
-Three properties are guaranteed by construction, and each has a test that
+Four properties are guaranteed by construction, and each has a test that
 attempts the forbidden action through every path that exists:
 
 | Guarantee | Where it is tested |
@@ -150,6 +150,7 @@ attempts the forbidden action through every path that exists:
 | Nothing but the athlete can write a constraint — not a coach at full permission, not an admin, not a background job | `tests/integration/test_coach.py`, `test_constraints.py` |
 | No share scope exposes a constraint value or account data, including `full_plan` | `tests/integration/test_coach.py` |
 | The language model cannot influence a number | `tests/unit/test_phrasing_boundary.py` |
+| Athlete data is reachable only through a grant the athlete approved — the admin account screen is not a second door | `tests/integration/test_admin_accounts.py` |
 
 The second of those found a real leak during development: bag items carried
 the "Why this?" reason, and *"Swim leg planned at 1:56/100m"* is a constraint
@@ -160,7 +161,7 @@ inside every block.
 
 ## The API
 
-147 routes. `GET /api/v1/docs` is the live reference; the shape is:
+153 routes. `GET /api/v1/docs` is the live reference; the shape is:
 
 | Area | Routes |
 |---|---|
@@ -179,7 +180,7 @@ inside every block.
 | Coach | 19 |
 | Sharing | 5 |
 | Race Mode | 1 |
-| Admin and ops | 13 |
+| Admin and ops | 19 |
 | Support access | 6 |
 | Internal jobs | 3 |
 | Health, docs, webhook | 6 |

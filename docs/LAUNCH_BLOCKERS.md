@@ -305,3 +305,36 @@ The performance test runs against the **real** bundle for exactly this reason:
 the golden fixtures are built with a constant gradient inside each segment, so
 their histograms collapse to a single bin and a revert to per-node solving
 would cost them nothing and pass unnoticed.
+
+---
+
+## 11 · Churn is measured against `updated_at`, because nothing records when a subscription was cancelled
+
+**What is unverified:** `subscriptions` carries `created_at`, `updated_at`,
+`renews_at` and `cancel_at`, and none of them is "when this subscription was
+cancelled". `cancel_at` is the date the access *ends*, which is a different
+date and is null for an immediate cancellation.
+
+So `admin_service.churn` uses `status = 'cancelled' AND updated_at >= since`
+as the proxy for "cancelled inside this window".
+
+**What it costs if it is wrong:** any other write to an already-cancelled row
+inside the window — a provider webhook re-syncing a status, a backfill, a
+support correction — makes that row look like it churned this month. The error
+only ever runs one way: it *inflates* the churn figure. A number that
+overstates the problem is the safer direction to be wrong in, but it is still
+wrong, and the first time somebody explains a bad month by pointing at this
+chart they will be explaining an artefact.
+
+The figure is also not wrong *today*: nothing in the current code touches a
+cancelled subscription after cancelling it. It is wrong the first time
+something does, silently, with no test that would notice.
+
+**What closes it:** a `cancelled_at timestamptz` column on `subscriptions`,
+set in `billing_service.cancel_subscription` and by the provider webhook, and
+`churn()` reading it instead. One migration, one column, two call sites. It was
+not done in the same change as the endpoint because backfilling it for
+existing rows means deciding what `cancelled_at` is for a subscription that was
+cancelled before the column existed — and the honest answer is null, which
+makes every historical row invisible to the new query and the old proxy still
+necessary for them. That is a data decision, not a code one.

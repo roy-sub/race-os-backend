@@ -190,6 +190,33 @@ class CourseVisibility(_StrEnum):
     RETIRED = "retired"
 
 
+class CurationStatus(_StrEnum):
+    """Whether an athlete-submitted course has been reviewed into the catalogue.
+
+    A submitted course is usable by the athlete who submitted it from the
+    moment it builds — they added it to race it, and making them wait on a
+    queue to plan their own race would be a worse product for no safety gain,
+    because they are the only one who can see it.
+
+    What review decides is the *other* direction: whether everyone else sees
+    it too. The catalogue is the set of courses this system says are surveyed,
+    and that claim is the product. One unchecked GPX trace promoted into it
+    quietly makes every other row less trustworthy, because a reader cannot
+    tell which kind of row they are looking at.
+
+    ``REJECTED`` does not delete anything or take the course away from its
+    submitter. It records that it was looked at and not published, with a
+    reason, so the next reviewer does not start again from nothing.
+    """
+
+    #: Built, private to its submitter, not yet looked at.
+    UNREVIEWED = "unreviewed"
+    #: Reviewed and listed to everyone, like a house course.
+    PUBLISHED = "published"
+    #: Reviewed and not listed. Stays with its submitter, with a reason.
+    REJECTED = "rejected"
+
+
 class SubmissionStatus(_StrEnum):
     """Where an athlete-submitted course has got to.
 
@@ -466,6 +493,8 @@ class NotificationType(_StrEnum):
     #: never have been told somebody asked to read their account. A privacy
     #: notice that a convenience preference can mute is not a notice.
     SUPPORT_ACCESS = "support_access"
+    #: A reviewer published or declined a course this athlete submitted.
+    COURSE_REVIEWED = "course_reviewed"
 
 
 #: Types whose in-app delivery cannot be switched off. The user chooses the
