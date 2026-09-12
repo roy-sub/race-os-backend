@@ -513,3 +513,258 @@ def test_every_billing_endpoint_rejects_an_absent_token(
 def test_the_price_list_is_deliberately_public(api: TestClient) -> None:
     """A pricing page that needs a login cannot sell anything."""
     assert api.get("/api/v1/prices").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Subscriptions
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def subscriber(api: TestClient, signed_up, paywall):
+    """A signed-up athlete, with the in-memory gateway installed.
+
+    No course or plan: buying a season pass is not about any one race, which
+    is exactly why it needed its own path rather than a variant of checkout.
+    """
+    return signed_up["headers"]
+
+
+def test_a_season_pass_can_actually_be_bought(subscriber, api: TestClient, api_db) -> None:
+    """Two of the four paid tiers could previously only be inserted by hand."""
+    response = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    assert response.status_code == 201, response.text
+    body = response.json()
+
+    assert body["subscription"]["tier"] == "season"
+    assert body["subscription"]["cancel_at"] is None
+
+    user = api_db.scalar(select(User).where(User.email == "elena.marsh@example.com"))
+    api_db.refresh(user)
+    assert user.tier is UserTier.SEASON, "the tier on the user must follow the agreement"
+
+
+def test_a_season_pass_unlocks_the_actions_it_is_sold_for(subscriber, api: TestClient) -> None:
+    """The proof that buying worked is the entitlement matrix, not the row."""
+    before = {
+        row["action"]: row["allowed"]
+        for row in api.get("/api/v1/entitlements", headers=subscriber).json()
+    }
+    assert before["post_race_analysis"] is False
+    assert before["season_history"] is False
+
+    api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+
+    after = {
+        row["action"]: row["allowed"]
+        for row in api.get("/api/v1/entitlements", headers=subscriber).json()
+    }
+    assert after["post_race_analysis"] is True
+    assert after["season_history"] is True
+    # Season is not coach. Buying one tier must not hand over the other's.
+    assert after["coach_board"] is False
+
+
+def test_a_coach_seat_unlocks_the_board_and_a_season_pass_does_not(
+    subscriber, api: TestClient
+) -> None:
+    api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "coach"})
+    rows = {
+        row["action"]: row["allowed"]
+        for row in api.get("/api/v1/entitlements", headers=subscriber).json()
+    }
+    assert rows["coach_board"] is True
+    assert rows["white_label_export"] is True
+
+
+def test_a_single_race_plan_is_not_a_subscription(subscriber, api: TestClient) -> None:
+    """`per_race` is bought at checkout, against a plan. Asking to subscribe to
+    it is a caller mistake, not a payment failure."""
+    response = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "per_race"})
+    assert response.status_code == 422
+    assert response.json()["error"]["field"] == "tier"
+
+
+def test_the_same_idempotency_key_never_opens_a_second_agreement(
+    subscriber, api: TestClient, api_db
+) -> None:
+    from raceos.db.models import Subscription
+
+    headers = {**subscriber, "Idempotency-Key": "sub-key-1"}
+    first = api.post("/api/v1/subscriptions", headers=headers, json={"tier": "season"})
+    second = api.post("/api/v1/subscriptions", headers=headers, json={"tier": "season"})
+
+    assert first.status_code == 201, first.text
+    # The second is refused as a duplicate subscription rather than opening
+    # one: either way, exactly one agreement exists.
+    assert second.status_code in (201, 409)
+    assert len(list(api_db.scalars(select(Subscription)))) == 1
+
+
+def test_subscribing_twice_to_the_same_tier_is_refused(subscriber, api: TestClient) -> None:
+    api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    again = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    assert again.status_code == 409
+    assert "already subscribed" in again.json()["error"]["message"].lower()
+
+
+def test_moving_from_season_to_coach_changes_one_agreement(
+    subscriber, api: TestClient, api_db
+) -> None:
+    """Not a cancel and a re-subscribe: that would bill a second full period
+    and reset the renewal date the athlete is used to."""
+    from raceos.db.models import Subscription
+
+    api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    upgraded = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "coach"})
+
+    assert upgraded.status_code == 201, upgraded.text
+    assert upgraded.json()["subscription"]["tier"] == "coach"
+
+    rows = list(api_db.scalars(select(Subscription)))
+    assert len(rows) == 1, "an upgrade must not leave the athlete paying for two tiers"
+    assert rows[0].tier is UserTier.COACH
+
+
+def test_cancelling_keeps_the_period_that_was_paid_for(subscriber, api: TestClient, api_db) -> None:
+    """Cancelling is not a refund. The athlete keeps what they bought until the
+    period ends — and anything they captured a payment for stays theirs for
+    good, because that is a purchase rather than a subscription."""
+    created = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    subscription_id = created.json()["subscription"]["id"]
+
+    cancelled = api.post(f"/api/v1/subscriptions/{subscription_id}/cancel", headers=subscriber)
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["cancel_at"] is not None
+    assert cancelled.json()["status"] == "active", "still paid for, so still active"
+
+    still_entitled = {
+        row["action"]: row["allowed"]
+        for row in api.get("/api/v1/entitlements", headers=subscriber).json()
+    }
+    assert still_entitled["post_race_analysis"] is True
+
+
+def test_a_pending_cancellation_can_be_undone(subscriber, api: TestClient) -> None:
+    created = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    subscription_id = created.json()["subscription"]["id"]
+    api.post(f"/api/v1/subscriptions/{subscription_id}/cancel", headers=subscriber)
+
+    resumed = api.post(f"/api/v1/subscriptions/{subscription_id}/resume", headers=subscriber)
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["cancel_at"] is None
+
+
+def test_resuming_something_that_is_not_ending_is_refused(subscriber, api: TestClient) -> None:
+    created = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    subscription_id = created.json()["subscription"]["id"]
+    assert (
+        api.post(f"/api/v1/subscriptions/{subscription_id}/resume", headers=subscriber).status_code
+        == 409
+    )
+
+
+def test_the_provider_ending_an_agreement_drops_the_tier(
+    subscriber, api: TestClient, api_db, api_settings
+) -> None:
+    """The webhook is what actually ends it — the provider is authoritative
+    about money, and a period boundary passes without anyone calling us."""
+    from raceos.db.models import Subscription
+
+    api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    row = api_db.scalar(select(Subscription))
+    provider_id = row.payment_provider_subscription_id
+
+    payload = json.dumps(
+        {
+            "id": "evt_sub_deleted",
+            "type": "customer.subscription.deleted",
+            "data": {"object": {"id": provider_id, "status": "canceled"}},
+        }
+    ).encode()
+    signature = sign_webhook(
+        payload=payload, secret=api_settings.stripe_webhook_secret.get_secret_value()
+    )
+    delivered = api.post(
+        "/webhooks/payments",
+        content=payload,
+        headers={"Stripe-Signature": signature, "Content-Type": "application/json"},
+    )
+    assert delivered.status_code == 200, delivered.text
+
+    after = {
+        entry["action"]: entry["allowed"]
+        for entry in api.get("/api/v1/entitlements", headers=subscriber).json()
+    }
+    assert after["post_race_analysis"] is False, "a cancelled season still granted its actions"
+
+    user = api_db.scalar(select(User).where(User.email == "elena.marsh@example.com"))
+    api_db.refresh(user)
+    assert user.tier is UserTier.FREE
+
+
+def test_a_captured_race_purchase_survives_cancellation(drafted, api: TestClient, api_db) -> None:
+    """The promise the entitlement design exists for: a plan you paid for stays
+    yours after you cancel."""
+    headers = drafted["headers"]
+    buy_plan(api, headers, drafted["plan_id"])
+    assert (
+        api.post(f"/api/v1/plans/{drafted['plan_id']}/solve", headers=headers, json={}).status_code
+        == 200
+    )
+
+    created = api.post("/api/v1/subscriptions", headers=headers, json={"tier": "season"})
+    subscription_id = created.json()["subscription"]["id"]
+    api.post(f"/api/v1/subscriptions/{subscription_id}/cancel", headers=headers)
+
+    rows = {
+        entry["action"]: entry["allowed"]
+        for entry in api.get(
+            "/api/v1/entitlements",
+            headers=headers,
+            params={"race_id": drafted["race_id"]},
+        ).json()
+    }
+    assert rows["export_plan"] is True
+    assert rows["race_mode"] is True
+
+
+def test_nobody_cancels_another_athletes_subscription(subscriber, api: TestClient) -> None:
+    created = api.post("/api/v1/subscriptions", headers=subscriber, json={"tier": "season"})
+    subscription_id = created.json()["subscription"]["id"]
+
+    other = api.post(
+        "/api/v1/auth/signup",
+        json={"email": "stranger.billing@example.com", "password": "correct-horse-battery-42"},
+    )
+    intruder = {"Authorization": f"Bearer {other.json()['access_token']}"}
+
+    assert (
+        api.post(f"/api/v1/subscriptions/{subscription_id}/cancel", headers=intruder).status_code
+        == 404
+    )
+
+
+def test_a_deployment_with_no_price_configured_refuses_rather_than_charges(
+    api: TestClient, signed_up, paywall, api_settings
+) -> None:
+    """Better a clear 409 than an agreement opened against an empty price.
+
+    A second app on the same database, built from settings with the season
+    price blanked — which is what an under-configured deployment is. Settings
+    are frozen, so this is the only honest way to express it.
+    """
+    from raceos.api.main import create_app
+
+    unconfigured = api_settings.model_copy(update={"stripe_price_id_season_pass": ""})
+    with TestClient(create_app(unconfigured), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/subscriptions", headers=signed_up["headers"], json={"tier": "season"}
+        )
+    assert response.status_code == 409
+    assert "not configured" in response.json()["error"]["message"]
+
+
+def test_the_subscription_endpoints_reject_an_absent_token(api: TestClient) -> None:
+    assert api.get("/api/v1/subscriptions").status_code == 401
+    assert api.post("/api/v1/subscriptions", json={"tier": "season"}).status_code == 401

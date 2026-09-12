@@ -68,6 +68,14 @@ def api_settings(rsa_keypair: tuple[str, str], database_url: str) -> Settings:
         # security model is the signature, so the suite has to verify real
         # signatures rather than skip the check.
         stripe_webhook_secret=SecretStr(secrets.token_urlsafe(32)),
+        # Price ids, because a subscription is billed against the provider's
+        # price rather than against `price_catalog` — the catalogue is what we
+        # display, the provider decides what is charged. A deployment without
+        # these cannot sell a season pass, and the suite has to exercise the
+        # deployment that can.
+        stripe_price_id_race_plan="price_test_race_plan",
+        stripe_price_id_season_pass="price_test_season_pass",
+        stripe_price_id_coach="price_test_coach",
     )
 
 

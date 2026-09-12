@@ -13,6 +13,7 @@ nowhere else is a rule in this codebase, so the four calls are written out.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -24,6 +25,7 @@ from raceos.payments.base import (
     PaymentIntent,
     PaymentStateError,
     ProviderRefund,
+    ProviderSubscription,
     WebhookEvent,
     verify_signature,
 )
@@ -70,6 +72,24 @@ class StripeGateway(PaymentGateway):
             ) from error
         return self._parse(response, path)
 
+    def _get(self, path: str) -> dict[str, Any]:
+        try:
+            response = self._client.get(path)
+        except httpx.HTTPError as error:
+            raise PaymentError(
+                f"could not reach the payment provider: {type(error).__name__}"
+            ) from error
+        return self._parse(response, path)
+
+    def _delete(self, path: str) -> dict[str, Any]:
+        try:
+            response = self._client.delete(path)
+        except httpx.HTTPError as error:
+            raise PaymentError(
+                f"could not reach the payment provider: {type(error).__name__}"
+            ) from error
+        return self._parse(response, path)
+
     @staticmethod
     def _parse(response: httpx.Response, path: str) -> dict[str, Any]:
         try:
@@ -91,6 +111,10 @@ class StripeGateway(PaymentGateway):
                 "payment_intent_unexpected_state",
                 "charge_already_captured",
                 "charge_already_refunded",
+                # A subscription that is already cancelled, or already on the
+                # price being set. A retry cannot fix either.
+                "subscription_payment_invalid",
+                "resource_missing",
             }:
                 raise PaymentStateError(f"{code}: {message}")
             raise PaymentError(f"{code}: {message}")
@@ -164,6 +188,117 @@ class StripeGateway(PaymentGateway):
             intent_id=intent_id,
             amount_cents=int(body["amount"]),
             status=str(body["status"]),
+        )
+
+    # -- subscriptions -------------------------------------------------
+
+    @staticmethod
+    def _subscription(body: dict[str, Any]) -> ProviderSubscription:
+        """Stripe's subscription object, narrowed to what we act on.
+
+        ``latest_invoice.payment_intent.client_secret`` is reached through the
+        expansion asked for at creation. It is absent on a subscription that
+        needed no confirmation, which is the ordinary case for a customer whose
+        card is already on file — so its absence is not an error.
+        """
+        invoice = body.get("latest_invoice")
+        secret: str | None = None
+        if isinstance(invoice, dict):
+            intent = invoice.get("payment_intent")
+            if isinstance(intent, dict):
+                raw = intent.get("client_secret")
+                secret = str(raw) if raw else None
+
+        period_end = body.get("current_period_end")
+        customer = body.get("customer")
+        return ProviderSubscription(
+            id=str(body["id"]),
+            customer_id=str(customer.get("id") if isinstance(customer, dict) else customer or ""),
+            status=str(body["status"]),
+            current_period_end=(
+                datetime.fromtimestamp(int(period_end), tz=UTC)
+                if isinstance(period_end, int | float)
+                else None
+            ),
+            cancel_at_period_end=bool(body.get("cancel_at_period_end")),
+            client_secret=secret,
+        )
+
+    def create_customer(self, *, email: str, name: str | None = None) -> str:
+        payload: dict[str, Any] = {"email": email}
+        if name:
+            payload["name"] = name
+        return str(self._post("/customers", payload)["id"])
+
+    def create_subscription(
+        self, *, customer_ref: str, price_id: str, idempotency_key: str
+    ) -> ProviderSubscription:
+        """``default_incomplete`` is what makes this safe to resume.
+
+        Without it Stripe marks a subscription whose first payment needs
+        authentication as ``incomplete`` and silently abandons it; with it, the
+        first invoice's PaymentIntent is returned and the client can confirm
+        the card. The expansion is how that secret reaches us in one round
+        trip instead of three.
+        """
+        if not price_id:
+            raise PaymentError("no price id was configured for this tier")
+        return self._subscription(
+            self._post(
+                "/subscriptions",
+                {
+                    "customer": customer_ref,
+                    "items[0][price]": price_id,
+                    "payment_behavior": "default_incomplete",
+                    "payment_settings[save_default_payment_method]": "on_subscription",
+                    "expand[]": "latest_invoice.payment_intent",
+                },
+                idempotency_key=idempotency_key,
+            )
+        )
+
+    def change_subscription_price(
+        self, subscription_id: str, *, price_id: str
+    ) -> ProviderSubscription:
+        """Swap the single item's price, prorated.
+
+        Stripe needs the *item* id to replace a price, so the subscription is
+        read first. That is one extra call and it is not avoidable: posting a
+        second item would leave the athlete paying for both tiers.
+        """
+        if not price_id:
+            raise PaymentError("no price id was configured for this tier")
+        current = self._get(f"/subscriptions/{subscription_id}")
+        items = current.get("items", {}).get("data", [])
+        if not items:  # pragma: no cover - a subscription always has an item
+            raise PaymentError(f"subscription {subscription_id} has no items to change")
+
+        return self._subscription(
+            self._post(
+                f"/subscriptions/{subscription_id}",
+                {
+                    "items[0][id]": str(items[0]["id"]),
+                    "items[0][price]": price_id,
+                    "proration_behavior": "create_prorations",
+                    # Moving up a tier is not still leaving.
+                    "cancel_at_period_end": "false",
+                    "expand[]": "latest_invoice.payment_intent",
+                },
+            )
+        )
+
+    def cancel_subscription(
+        self, subscription_id: str, *, at_period_end: bool = True
+    ) -> ProviderSubscription:
+        if at_period_end:
+            return self._subscription(
+                self._post(f"/subscriptions/{subscription_id}", {"cancel_at_period_end": "true"})
+            )
+        return self._subscription(self._delete(f"/subscriptions/{subscription_id}"))
+
+    def resume_subscription(self, subscription_id: str) -> ProviderSubscription:
+        return self._subscription(
+            self._post(f"/subscriptions/{subscription_id}", {"cancel_at_period_end": "false"})
         )
 
     def verify_webhook(self, *, payload: bytes, signature_header: str) -> WebhookEvent:
