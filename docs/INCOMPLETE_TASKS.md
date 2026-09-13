@@ -12,6 +12,17 @@
   temperature and those values are not in hand. Transcribing them from memory
   is the exact failure the structure exists to prevent.
 
+## Partial — scope shipped, remainder is real work
+
+- B4 — Settings data sources. Three paths are named and two work: entering a
+  value by hand, and the guided estimator (all eight constraints). The
+  file-upload path into constraints is not built — post-race analysis takes a
+  file, but nothing carries one into a constraint directly.
+- B7 — accessibility. The Level A failures are fixed: keyboard operation,
+  visible focus, a skip link, and glyphs so state is not carried by colour
+  alone. Still owed for AA: `<main>` landmarks on most screens, table
+  equivalents beside the charts, and an audit at 200% zoom and 375px.
+
 ## Partial — needs a product decision before it is safe to build
 
 - E1 — bike-split import. `ConstraintSource.IMPORTED` exists; the import path
@@ -23,4 +34,4 @@
 
 ## Pending
 
-None. A5, B3, B7 and B8 are done.
+None. A5, A9, B3 and B8 are done and on main.
