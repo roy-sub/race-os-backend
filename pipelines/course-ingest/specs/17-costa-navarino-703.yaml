@@ -1,0 +1,55 @@
+# IRONMAN 70.3 Costa Navarino -- Messinia, on the Ionian coast of the
+# Peloponnese.
+#
+# Romanos beach is a long open strand facing west into the Ionian. The ground
+# behind it rises quickly into the Messinian hills, so the bike leg is rolling
+# from the first few kilometres inland.
+course_id: costa-navarino-703
+slug: costa-navarino-703
+name: IRONMAN 70.3 Costa Navarino, Peloponnese, Greece
+place: Peloponnese, Greece
+country: GR
+timezone: Europe/Athens
+distance_type: "70.3"
+difficulty: MODERATE
+character: rolling
+tone_color: "#22648c"
+
+# Gialova, on the northern shore of Navarino Bay. The open Romanos strand a
+# few kilometres north has no shoreline the water data can anchor a swim to;
+# the bay is the sheltered water the venue is named for in any case.
+start:
+  lat: 36.9560
+  lng: 21.6720
+
+swim:
+  water_kind: sea
+  water_name: Ionian Sea
+  # Out into Navarino Bay, to the west-south-west.
+  bearing_deg: 250
+
+bike:
+  laps: 2
+  # East, inland into the Messinian hills.
+  bearing_offset_deg: 95
+  character: rolling
+
+run:
+  laps: 2
+  # North along the bay shore, which is flat: the Messinian hills the bike leg
+  # climbs start further inland, and the run ring delivered 3.1 m/km.
+  bearing_offset_deg: 355
+  character: flat_coastal
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.0
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Navarino Bay swim at Gialova,
+  two-lap bike leg into the Messinian hills, two-lap bay-shore run.
+
+status: ready

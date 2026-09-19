@@ -1,0 +1,53 @@
+# IRONMAN Portugal-Cascais -- the full distance on the same Estoril coast.
+#
+# Same start as the 70.3, twice the bike leg, and the extra distance is spent
+# in the Serra de Sintra rather than on the flat coast road -- which is why
+# this one is HARD where the 70.3 is MODERATE.
+course_id: portugal-cascais-full
+slug: portugal-cascais-full
+name: IRONMAN Portugal-Cascais
+place: Cascais, Portugal
+country: PT
+timezone: Europe/Lisbon
+distance_type: Full
+difficulty: HARD
+character: rolling
+tone_color: "#2b6ea8"
+
+# Praia da Ribeira, the Cascais bay shoreline.
+start:
+  lat: 38.6940
+  lng: -9.4180
+
+swim:
+  water_kind: sea
+  water_name: Baia de Cascais
+  bearing_deg: 190
+
+bike:
+  # Four laps keeps the ring on the Sintra foothills rather than over them.
+  laps: 4
+  # North-west, into the Serra de Sintra.
+  bearing_offset_deg: 335
+  character: rolling
+
+run:
+  laps: 2
+  bearing_offset_deg: 80
+  character: coastal_hills
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 0.98
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Cascais bay swim, two-lap
+  Sintra bike leg, four-lap Estoril seafront run.
+notes: >-
+  Deliberately the tighter cut-off ladder of the two Cascais courses -- the
+  Sintra climbing is what the extra distance buys.
+
+status: ready

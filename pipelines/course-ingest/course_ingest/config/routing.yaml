@@ -142,6 +142,17 @@ character:
     waypoint_relief_fraction: 0.35
     min_gain_per_km: 4.0
     max_gain_per_km: 22.0
+  # A coast whose hinterland rises within a kilometre or two of the beach:
+  # the Maresme, the Costa del Sol, the Antalya terraces. Routing neither
+  # seeks climbs nor avoids them, because there is no flat line to find -- the
+  # gain is what the ground gives. Added for the 2026 Mediterranean courses,
+  # which sit between `rolling` and `mountainous` and validated as neither:
+  # every one of them delivered 15-19 m/km however the loop was pointed.
+  coastal_hills:
+    climb_bias: 0.0
+    waypoint_relief_fraction: 0.25
+    min_gain_per_km: 6.0
+    max_gain_per_km: 24.0
   approachable:
     climb_bias: -0.20
     waypoint_relief_fraction: 0.1
@@ -186,6 +197,9 @@ loop:
     rural_rolling: 330.0
     harbour_volcanic: 260.0
     fjord_town: 300.0
+    # A wide arc: the hills sit behind the whole coast, not in one direction,
+    # so the loop has no reason to run out and back the way a range does.
+    coastal_hills: 310.0
     approachable: 330.0
     flat_coastal: 330.0
     flat_exposed: 340.0

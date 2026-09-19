@@ -1,5 +1,11 @@
 # IRONMAN 70.3 Italy Emilia-Romagna -- Cervia, on the Adriatic.
 #
+# RUN. The 2026 edition was 20 September 2026; the catalogue no longer lists
+# it and its generated bundle has been removed with it. The spec stays because
+# it is the worked reference for a real-venue course -- flat coastal character,
+# one-lap bike, two-lap seafront run -- and because the 2027 edition is a date
+# change and a regenerate, not new work.
+#
 # The first real, licensed-venue course in the shipping set. Everything before
 # this one is an invented race on real roads; this one is an actual event, so
 # the start point is the actual race village on the Cervia seafront and the
@@ -51,4 +57,5 @@ notes: >-
   from the organiser's own course file, so it is ESTIMATED until an official
   file is licensed -- the provenance column says so on every screen.
 
-status: ready
+# Run; not in the shipping set. See the note at the top.
+status: pending

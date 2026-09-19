@@ -1,0 +1,55 @@
+# IRONMAN 70.3 Portugal-Cascais -- the Estoril coast, west of Lisbon.
+#
+# Cascais bay is sheltered and faces south; the Atlantic swell arrives from the
+# west, so the swim is drawn out into the bay rather than onto the open coast.
+# The bike leg climbs north-west into the Serra de Sintra, which is what makes
+# the venue worth racing and what puts both Cascais courses above the flat band.
+course_id: portugal-cascais-703
+slug: portugal-cascais-703
+name: IRONMAN 70.3 Portugal-Cascais
+place: Cascais, Portugal
+country: PT
+timezone: Europe/Lisbon
+distance_type: "70.3"
+difficulty: MODERATE
+character: rolling
+tone_color: "#2b6ea8"
+
+# Praia da Ribeira, the Cascais bay shoreline.
+start:
+  lat: 38.6940
+  lng: -9.4180
+
+swim:
+  water_kind: sea
+  water_name: Baia de Cascais
+  # The bay opens to the south.
+  bearing_deg: 190
+
+bike:
+  laps: 3
+  # North-west, into the Serra de Sintra.
+  bearing_offset_deg: 340
+  character: rolling
+
+run:
+  laps: 3
+  # East along the Estoril seafront.
+  bearing_offset_deg: 80
+  character: rolling
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.0
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Cascais bay swim, one-lap
+  Sintra bike leg, three-lap Estoril seafront run.
+notes: >-
+  Shares a venue with IRONMAN Portugal-Cascais; the two are separate bundles
+  with separate geometry, as the distances differ.
+
+status: ready

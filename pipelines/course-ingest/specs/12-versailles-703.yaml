@@ -1,0 +1,84 @@
+# IRONMAN 70.3 Versailles -- the Yvelines, west of Paris.
+#
+# STATUS: pending, and blocked on data rather than on effort. Read the note
+# below before changing `status` to `ready`; generating it as it stands fails
+# in Stage 3 and writes nothing.
+#
+# The only inland course in the catalogue, and the only one whose swim cannot
+# be sited. A 70.3 swim is a 1.9 km rectangle at 3:1 -- roughly 710 m by 240 m
+# -- and every node of it must sit 15 m inside a real water polygon. Nothing
+# within reach of Versailles satisfies that in the pinned Overture water
+# theme:
+#
+#   Grand Canal (the chateau, and the real race's venue)  no water polygon
+#   Etang de Saint-Quentin, all approaches                no water polygon
+#   Etang de Saclay, Trappes, Rambouillet                 no water polygon
+#   Lac de Creteil, Bois de Boulogne, Vaires-sur-Marne    no water polygon
+#   the Seine at Verneuil, Moisson                        no water polygon
+#
+# The nearest water that does hold the course is the Etang de la Folie at
+# Cergy-Pontoise, 30 km north and in another department. Building the course
+# there and calling it Versailles would put a customer's course map, terrain,
+# weather and start line 30 km from the race they paid for, so the catalogue
+# lists this event as COMING_SOON instead -- announced, dated, and honestly
+# not enterable.
+#
+# What closes it, in order of preference:
+#   1. A licensed course file for the real Grand Canal swim, fed to stages
+#      4-10 directly. This is the right answer: it is a real race with a real
+#      published course.
+#   2. A water source with French inland hydrography (IGN BD TOPAGE, or OSM
+#      water relations) behind `RoadSource.water_rings_in_bbox`. The Grand
+#      Canal is about 60 m wide, so it would also need a per-course
+#      `rectangle_aspect` override -- at 12:1 the course is 877 m by 73 m,
+#      which fits. `rectangle_aspect` is global config today and changing it
+#      would alter every existing bundle.
+course_id: versailles-703
+slug: versailles-703
+name: IRONMAN 70.3 Versailles
+place: Versailles, France
+country: FR
+timezone: Europe/Paris
+distance_type: "70.3"
+difficulty: MODERATE
+character: rural_rolling
+tone_color: "#4a4364"
+
+# The Grand Canal of the chateau -- the real venue, recorded so that the spec
+# is ready the moment either fix above lands.
+start:
+  lat: 48.8130
+  lng: 2.1120
+
+swim:
+  water_kind: canal
+  water_name: Grand Canal de Versailles
+  # West, down the long arm of the canal.
+  bearing_deg: 270
+
+bike:
+  laps: 1
+  # North-west, over the Yvelines plateau.
+  bearing_offset_deg: 300
+  character: rural_rolling
+
+run:
+  laps: 3
+  # East, back toward the city.
+  bearing_offset_deg: 90
+  character: approachable
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.02
+
+changelog: >-
+  Specified, not generated. The swim venue has no water polygon in the pinned
+  data, so Stage 3 cannot draw the leg.
+notes: >-
+  The catalogue lists this race as COMING_SOON with its announced date. It is
+  the one event in the season that is listed and not enterable.
+
+status: pending

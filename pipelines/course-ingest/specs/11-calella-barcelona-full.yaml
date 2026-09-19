@@ -1,0 +1,58 @@
+# IRONMAN Calella-Barcelona -- the Maresme coast, north of Barcelona.
+#
+# Calella is a seafront town on a long, straight north-east/south-west beach,
+# hemmed in by the Serralada Litoral. Pointed inland the loop turns into a
+# mountain course, so the bike leg follows the coastal shelf instead and the
+# run stays on the promenade.
+course_id: calella-barcelona-full
+slug: calella-barcelona-full
+name: IRONMAN Calella-Barcelona
+place: Calella, Spain
+country: ES
+timezone: Europe/Madrid
+distance_type: Full
+difficulty: MODERATE
+character: coastal_hills
+tone_color: "#8a5a2b"
+
+# Calella seafront, Passeig de les Roques.
+start:
+  lat: 41.6130
+  lng: 2.6600
+
+swim:
+  water_kind: sea
+  water_name: Mediterranean Sea
+  # The Mediterranean lies south-east of the Maresme shoreline.
+  bearing_deg: 140
+
+bike:
+  # Four laps, not two. The lap length sets the loop radius, and that is what
+  # decides how far inland the ring reaches: at two laps it climbed 3118 m over
+  # 180 km, which is a mountain course and not this race.
+  laps: 4
+  bearing_offset_deg: 50
+  character: coastal_hills
+
+run:
+  # Three laps. Two put the ring deeper into the hills behind the town and
+  # delivered 22.5 m/km; three holds it nearer the promenade at 15.
+  laps: 3
+  bearing_offset_deg: 50
+  character: coastal_hills
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.0
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Mediterranean beach swim,
+  two-lap coastal-shelf bike leg, four-lap promenade run.
+notes: >-
+  Real venue, real roads, real terrain. Routed rather than copied from the
+  organiser's course file, so it stays ESTIMATED until one is licensed.
+
+status: ready

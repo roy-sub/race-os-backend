@@ -1,0 +1,55 @@
+# IRONMAN 70.3 Malaga -- the Costa del Sol, with the Montes de Malaga behind.
+#
+# The coastal plain here is narrow: a few kilometres inland the ground rises
+# hard into the Montes de Malaga, and the bike leg goes there. That climbing is
+# why the catalogue rates this HARD despite the 70.3 distance.
+course_id: malaga-703
+slug: malaga-703
+name: IRONMAN 70.3 Malaga
+place: Malaga, Spain
+country: ES
+timezone: Europe/Madrid
+distance_type: "70.3"
+difficulty: HARD
+character: coastal_hills
+tone_color: "#a4632a"
+
+# Playa de la Malagueta. The flatter Misericordia end further west has no
+# shoreline the water data can anchor a swim to.
+start:
+  lat: 36.7175
+  lng: -4.4080
+
+swim:
+  water_kind: sea
+  water_name: Alboran Sea
+  # The Mediterranean lies south of the Malagueta shoreline.
+  bearing_deg: 175
+
+bike:
+  # Three laps: a single 90 km ring reaches deep into the Montes de Malaga and
+  # delivered 22.1 m/km, well past rolling.
+  laps: 3
+  # North, inland into the Montes de Malaga.
+  bearing_offset_deg: 350
+  character: coastal_hills
+
+run:
+  # Two laps, west along the Paseo Maritimo and away from the Gibralfaro
+  # ridge that sits directly behind the start.
+  laps: 1
+  bearing_offset_deg: 250
+  character: coastal_hills
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 0.99
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Alboran Sea swim, one-lap bike
+  leg into the Montes de Malaga, three-lap seafront run.
+
+status: ready

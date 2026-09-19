@@ -1,0 +1,58 @@
+# IRONMAN 70.3 Turkiye -- Belek, on the Gulf of Antalya.
+#
+# The Antalya coastal plain is dead flat for the first several kilometres
+# inland before the Taurus foothills start, and the bike leg stays on the
+# plain. Warm, flat and fast -- the most approachable course in the set after
+# the showcase.
+course_id: turkiye-703
+slug: turkiye-703
+name: IRONMAN 70.3 Turkiye
+place: Antalya, Turkiye
+country: TR
+timezone: Europe/Istanbul
+distance_type: "70.3"
+difficulty: APPROACHABLE
+character: flat_coastal
+tone_color: "#1f7a6a"
+
+# Lara beach, on the eastern edge of Antalya. Belek itself, 30 km further
+# east, is resort land: its road network is too sparse and too disconnected to
+# close a 90 km ring at all -- the tightest loop the graph allows there is
+# 152.8 km. Lara is the same flat Antalya coastal plain with a real street
+# grid behind it.
+start:
+  lat: 36.8480
+  lng: 30.8000
+
+swim:
+  water_kind: sea
+  water_name: Gulf of Antalya
+  # The gulf lies south of the Lara shoreline.
+  bearing_deg: 170
+
+bike:
+  laps: 1
+  # North-east, along the coastal plain toward Belek.
+  bearing_offset_deg: 60
+  character: flat_coastal
+
+run:
+  laps: 3
+  # East along the shore. The bike leg's coastal plain really is flat, but the
+  # run ring sits on the terraced ground above Lara beach and delivered
+  # 15.4 m/km, so the two legs carry different characters.
+  bearing_offset_deg: 80
+  character: coastal_hills
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.04
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Gulf of Antalya swim, one-lap
+  flat coastal-plain bike leg, three-lap shoreline run.
+
+status: ready

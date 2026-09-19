@@ -1,0 +1,51 @@
+# IRONMAN 70.3 Porec -- the Istrian Adriatic.
+#
+# Porec sits on a low limestone peninsula. The water is sheltered and shallow,
+# and the bike leg runs inland over the gentle Istrian interior -- rolling
+# rather than flat, but nothing that resembles a mountain.
+course_id: porec-703
+slug: porec-703
+name: IRONMAN 70.3 Porec
+place: Porec, Croatia
+country: HR
+timezone: Europe/Zagreb
+distance_type: "70.3"
+difficulty: MODERATE
+character: rural_rolling
+tone_color: "#1f6f6b"
+
+# The Porec waterfront, north of the old town peninsula.
+start:
+  lat: 45.2285
+  lng: 13.5925
+
+swim:
+  water_kind: sea
+  water_name: Adriatic Sea
+  # The Adriatic lies west of the Istrian shoreline.
+  bearing_deg: 280
+
+bike:
+  laps: 1
+  # East, inland over the Istrian plateau.
+  bearing_offset_deg: 100
+  character: rural_rolling
+
+run:
+  laps: 3
+  # South along the shore past the old town.
+  bearing_offset_deg: 170
+  character: flat_coastal
+
+season_year: 2026
+version: v2026.1
+provenance: ESTIMATED
+verified: false
+cutoff_generosity: 1.02
+
+
+changelog: >-
+  Initial generated bundle for the 2026 edition. Adriatic swim off the Porec
+  waterfront, one-lap Istrian bike leg, three-lap shoreline run.
+
+status: ready

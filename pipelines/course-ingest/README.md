@@ -1,14 +1,16 @@
 # `pipelines/course-ingest`
 
-Builds RaceOS course bundles: **real roads, real elevation, fictional race names.**
+Builds RaceOS course bundles: **real roads, real elevation, routes we drew ourselves.**
 
-The nine seeded races in the frontend's directory are invented, so no course files exist for them
-and nothing can be downloaded. This pipeline generates them — routing along actual OpenStreetMap
-ways and sampling actual terrain — so the solver gets truthful gradients, the map renders roads that
-exist, and no race organiser's trademark or licensed course data is used.
+No course file exists for the races in the directory — the invented ones because they are
+invented, the real ones because their organisers' course data is licensed. This pipeline generates
+them — routing along actual OpenStreetMap ways and sampling actual terrain — so the solver gets
+truthful gradients, the map renders roads that exist, and no race organiser's trademark or
+licensed course data is used. Every generated course is stamped `ESTIMATED` and says so on
+every screen.
 
 It is not seed tooling. The same code ingests real licensed courses and athlete GPX uploads for
-races not in the directory; the seeded nine are simply its first input.
+races not in the directory; the catalogue is simply its first input.
 
 ---
 
@@ -222,21 +224,48 @@ cutoff time window — the two fractions differ because athletes slow through a 
 distance that reproduces km 120 at 510 minutes.
 
 Making a course harder is one number in its spec. See `docs/CUTOFF_LADDER.md` for the spread across
-the nine and why three of them are deliberately tight.
+the catalogue and why some of them are deliberately tight.
 
 ---
 
-## The shipping set, and the six deferred courses
+## The shipping set
 
-Three courses are generated: **Tramuntana Full** (full distance, mountainous),
-**Kalmar 70.3** (flat coastal, generous cut-offs) and **Skagen 70.3** (flat and exposed, deliberately
-tight cut-offs). Between them they cover both primary distances, both terrain extremes, and a
-feasibility spread from CLEAR to INFEASIBLE.
+Ten courses are generated. Seven are the 2026 catalogue season — **Calella-Barcelona**,
+**Portugal-Cascais** at both distances, **Málaga**, **Poreč**, **Costa Navarino** and
+**Türkiye**; **Kalmar 70.3** is the signed-out showcase; **Tramuntana Full** and
+**Skagen 70.3** are demo courses the backend's seed retires, kept because between them they
+cover both terrain extremes and a feasibility spread from CLEAR to INFEASIBLE.
 
-The other six specs are complete and marked `status: pending`. `regenerate-all` skips them; pass
-`--include-pending` to build them. **Their coordinates, terrain character, lap structure and cut-off
-dial are settled and reviewed — nothing needs re-deriving.** Change `status: pending` to
-`status: ready` and generate.
+The remaining specs are marked `status: pending`. `regenerate-all` skips them; pass
+`--include-pending` to build them. Two are pending for reasons worth knowing before you try:
+
+- **`12-versailles-703`** does not build, and the spec says why at length. There is no water
+  polygon within reach of Versailles that will hold a 1.9 km rectangle at 3:1 — not the Grand
+  Canal, not Saint-Quentin, not the Seine. It is a data gap, not a tuning problem.
+- **`10-italy-emilia-romagna-703`** has been run: the 2026 edition was 20 September 2026 and
+  the catalogue no longer lists it. The spec is kept as the worked reference for a real-venue
+  course; the 2027 edition is a date change and a regenerate.
+
+### Two venues are not where the race is
+
+Recorded here because they are the kind of thing a reader will otherwise find by accident.
+**Türkiye** routes from Lara rather than Belek: Belek is resort land, and its road graph cannot
+close a ring shorter than 152.8 km against a 90 km target. **Costa Navarino** starts at Gialova
+inside Navarino Bay rather than on the open Romanos strand, which has no shoreline the water
+data can anchor a swim to. Both are the same coast within 30 km, and both specs say so.
+
+### Declaring a character is a routing decision, not a label
+
+`character` sets the band the emitted course is validated against **and** the `climb_bias` the
+router costs edges with, so the two are coupled and a rejected course cannot be fixed by
+renaming it. Swinging the bias across its whole range moves delivered gain by roughly 17%;
+changing the **lap count** moves it far more, because lap length sets the loop radius and the
+radius decides how far inland the ring reaches. Cascais's bike leg went from 18.4 to 14.1 m/km
+on lap count alone. Reach for laps first.
+
+`coastal_hills` was added for this season: a coast whose hinterland rises within a kilometre or
+two of the beach — the Maresme, the Costa del Sol, the Antalya terraces — sits between `rolling`
+and `mountainous` and validated as neither, delivering 15–19 m/km however the loop was pointed.
 
 ## Adding a course
 
@@ -282,7 +311,7 @@ elevation, Stage 7 discards it.
 
 `SOLVER_MODEL.md` §B.1 defines `C-TRAM`, `C-FLAT`, `C-ALTA`, `C-HALF`, `C-OLY` and `C-SPR` with
 node series generated to reproduce exact net gradients. They are checked in as static files under
-`backend/tests/golden/courses/` and are **entirely separate from the nine seeded bundles**, even
+`backend/tests/golden/courses/` and are **entirely separate from the generated bundles**, even
 though `C-TRAM` shares a name and coordinates with Tramuntana Full.
 
 If a golden case ever read a pipeline-generated bundle, regenerating a course would silently break
@@ -313,4 +342,4 @@ A cold, uncached first course spends most of its time downloading: ~260 MB of Ov
 footers for the row-group manifest (once, then cached for every later course) and the DEM tiles under
 its bbox. Warm, a full-distance course takes roughly two to four minutes, dominated by routing
 (~60–90 s per leg for the fixed radius scan and bisection, doubled when a re-route pass fires).
-`regenerate-all` across the nine is well under an hour warm.
+`regenerate-all` across the shipping set is well under an hour warm.
