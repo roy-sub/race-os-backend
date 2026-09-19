@@ -256,6 +256,7 @@ transaction-mode pooler port, disables prepared statements and uses a
 | `docs/LAUNCH_BLOCKERS.md` | What is knowingly incomplete for V1 |
 | `docs/FIELD_NAME_RECONCILIATION.md` | Where storage names differ from the mock's |
 | `docs/DEFINITION_OF_DONE.md` | Each requirement, with the evidence for it |
+| `docs/SECURITY.md` | The security model, and the review that last tested it |
 
 ---
 

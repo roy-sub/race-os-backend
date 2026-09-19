@@ -14,6 +14,7 @@ import pytest
 
 from raceos.api.main import create_app
 from raceos.services import job_service
+from tests.routes import iter_routes
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -28,7 +29,7 @@ def route_count() -> int:
     app = create_app()
     return sum(
         1
-        for route in app.routes
+        for route in iter_routes(app)
         for _ in (getattr(route, "methods", set()) or set()) - {"HEAD", "OPTIONS"}
     )
 
@@ -51,9 +52,9 @@ def test_the_readme_route_table_sums_to_the_stated_total(readme: str, route_coun
     assert rows, "the route-area table has no rows"
 
     total = sum(int(n) for _, n in rows)
-    assert total == route_count, (
-        f"the route-area table sums to {total} but the app has {route_count} routes"
-    )
+    assert (
+        total == route_count
+    ), f"the route-area table sums to {total} but the app has {route_count} routes"
 
 
 def test_every_job_in_the_readme_table_exists(readme: str) -> None:

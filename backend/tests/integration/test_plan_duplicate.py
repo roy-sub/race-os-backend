@@ -52,9 +52,7 @@ def solved(seeded, api: TestClient, signed_up):
         api.put(f"/api/v1/constraints/{key}", headers=headers, json={"value": value})
 
     source_race = _race(api, headers, days=90)
-    plan_id = api.post(
-        "/api/v1/plans", headers=headers, json={"race_id": source_race}
-    ).json()["id"]
+    plan_id = api.post("/api/v1/plans", headers=headers, json={"race_id": source_race}).json()["id"]
     api.patch(
         f"/api/v1/plans/{plan_id}/draft",
         headers=headers,

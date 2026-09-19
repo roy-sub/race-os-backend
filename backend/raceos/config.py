@@ -311,6 +311,16 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     rate_limit_enabled: bool = True
     rate_limit_default_per_minute: int = Field(default=120, ge=1)
+    #: Whether `X-Forwarded-For` may be believed when identifying a caller.
+    #:
+    #: **False by default, and that default is the safe one.** Trusting the
+    #: header when nothing strips it lets any caller set their own address and
+    #: walk straight through every per-IP limit by rotating it. It must be on
+    #: in production, where the app only ever receives traffic through
+    #: Render's proxy: without it every request carries the proxy's address,
+    #: all callers share one rate-limit bucket, and one attacker can exhaust
+    #: the quota for everybody — the limiter becomes the denial of service.
+    trust_proxy_headers: bool = False
     rate_limit_auth_per_minute: int = Field(default=10, ge=1)
     rate_limit_share_code_per_minute: int = Field(default=5, ge=1)
     idempotency_key_ttl_hours: int = Field(default=24, ge=1, le=720)

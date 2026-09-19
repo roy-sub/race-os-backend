@@ -171,7 +171,6 @@ def signup(
             user_id=user.id,
             token_hash=token.hashed,
             expires_at=_now() + timedelta(hours=settings.email_verification_ttl_hours),
-            delivery_link=f"{settings.app_base_url.rstrip('/')}/verify-email/{token.raw}",
         )
     )
     deliver(
@@ -358,28 +357,31 @@ def _revoke_all_sessions(session: Session, user_id: UUID) -> None:
 # ---------------------------------------------------------------------------
 
 
-def request_password_reset(session: Session, *, email: str, settings: Settings) -> None:
+def request_password_reset(session: Session, *, email: str, settings: Settings) -> str | None:
     """Always succeeds from the caller's point of view.
 
     **Hard requirement (Part 8.5): this must not leak account existence.** The
     router returns 202 unconditionally; this function simply does nothing when
     the address is unknown.
+
+    Returns the raw token so that a caller inside the process can act on it —
+    the email transport does, and so does the suite. It is deliberately *not*
+    written anywhere: only its hash is stored, which is the whole point of
+    hashing it. The router discards this value and never puts it in a
+    response, because "forgot password" that answers with a usable token is an
+    account-takeover endpoint.
     """
     user = session.scalar(select(User).where(User.email == email.strip()))
     if user is None or user.account_state is AccountState.ERASED:
         logger.info("password reset requested for an unknown address")
-        return
+        return None
 
     token = security.issue_token()
-    link = f"{settings.app_base_url.rstrip('/')}/reset-password?token={token.raw}"
     session.add(
         PasswordResetToken(
             user_id=user.id,
             token_hash=token.hashed,
             expires_at=_now() + timedelta(minutes=settings.password_reset_ttl_minutes),
-            # Retained ONLY so support can hand it over while email delivery is
-            # a no-op. Exposed by an admin-only endpoint, never a public one.
-            delivery_link=link,
         )
     )
     deliver(
@@ -393,6 +395,7 @@ def request_password_reset(session: Session, *, email: str, settings: Settings) 
         ),
         settings,
     )
+    return token.raw
 
 
 def reset_password(session: Session, *, token: str, new_password: str, settings: Settings) -> User:
@@ -456,7 +459,6 @@ def resend_verification(session: Session, *, user: User, settings: Settings) -> 
             user_id=user.id,
             token_hash=token.hashed,
             expires_at=_now() + timedelta(hours=settings.email_verification_ttl_hours),
-            delivery_link=f"{settings.app_base_url.rstrip('/')}/verify-email/{token.raw}",
         )
     )
     deliver(

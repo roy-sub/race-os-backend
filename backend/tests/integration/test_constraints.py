@@ -19,6 +19,7 @@ from raceos.config import Settings
 from raceos.db.models import Constraint, ConstraintHistory, User
 from raceos.domain.enums import CONSTRAINT_KEYS, ConstraintSource
 from raceos.services import constraint_service
+from tests.routes import iter_routes
 
 pytestmark = pytest.mark.integration
 
@@ -337,7 +338,7 @@ def test_no_endpoint_accepts_an_athlete_id_for_a_constraint_write(
     """
     routes = [
         route
-        for route in api.app.routes
+        for route in iter_routes(api.app)
         if getattr(route, "path", "").startswith("/api/v1/constraints")
     ]
     assert routes, "the constraints router must be mounted"

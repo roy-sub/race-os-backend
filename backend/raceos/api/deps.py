@@ -23,7 +23,15 @@ from raceos.db.models import AdminRoleAssignment, User
 from raceos.db.session import get_session_factory
 from raceos.domain.enums import AccountState, AdminRole
 from raceos.logging import actor_id_var
-from raceos.services import security
+from raceos.services import rate_limit, security
+
+#: Paths the global limiter leaves alone.
+#:
+#: Health checks are polled every few seconds by the platform and must never
+#: be throttled; the payment webhook is retried by Stripe and is authenticated
+#: by signature rather than by origin, so throttling it risks dropping a
+#: payment event rather than an attack.
+_UNMETERED_PATHS = frozenset({"/healthz", "/readyz", "/metrics", "/webhooks/payments"})
 
 
 def get_db() -> Iterator[Session]:
@@ -72,6 +80,68 @@ Config = Annotated[Settings, Depends(get_config)]
 Warnings = Annotated[WarningCollector, Depends(get_warnings)]
 
 
+def client_ip(request: Request, settings: Settings) -> str | None:
+    """The caller's address, as well as it can be known.
+
+    Behind a proxy the socket address is the proxy's, so every caller would
+    otherwise share one rate-limit bucket and one attacker could exhaust the
+    quota for everybody. `X-Forwarded-For` carries the real chain, and its
+    leftmost entry is the originating client — but only when something
+    upstream is guaranteed to overwrite a caller-supplied header, which is
+    why this is gated on `TRUST_PROXY_HEADERS` rather than simply preferred.
+    Off, an attacker sets their own address and defeats every per-IP limit.
+    """
+    if settings.trust_proxy_headers:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        first = forwarded.split(",")[0].strip()
+        if first:
+            # Bounded: it reaches a rate-limit key and a hash, and an
+            # unbounded caller-controlled value in either is a liability.
+            return first[:64]
+    return request.client.host if request.client else None
+
+
+def enforce_default_rate_limit(
+    request: Request,
+    session: DbSession,
+    settings: Config,
+) -> None:
+    """A ceiling on every request, whoever is asking.
+
+    `RATE_LIMIT_DEFAULT_PER_MINUTE` existed as configuration for a long time
+    without anything reading it: only three auth routes and the share-code
+    lookup were limited, so everything else — search, recon, the solver — was
+    unmetered. This is the floor beneath the stricter per-route limits, which
+    still apply on top of it.
+
+    Keyed by account when there is one, so a signed-in user on a shared or
+    carrier-grade NAT address is not throttled by their neighbours, and by
+    address otherwise.
+    """
+    if request.method == "OPTIONS" or request.url.path in _UNMETERED_PATHS:
+        return
+
+    subject = f"ip:{client_ip(request, settings)}"
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            claims = security.decode_token(
+                authorization.split(" ", 1)[1].strip(), kind="access", settings=settings
+            )
+        except security.TokenError:
+            pass
+        else:
+            subject = f"user:{claims['sub']}"
+
+    rate_limit.enforce_rate_limit(
+        session,
+        subject=subject,
+        bucket="global",
+        limit=settings.rate_limit_default_per_minute,
+        settings=settings,
+    )
+
+
 def _bearer(authorization: str | None) -> str:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise Unauthenticated("Sign in to continue.")
@@ -97,7 +167,16 @@ def current_user(
     except security.TokenError as exc:
         raise Unauthenticated("Your session has expired. Please sign in again.") from exc
 
-    user = session.get(User, UUID(claims["sub"]))
+    # A signed token with a non-UUID `sub` cannot be forged without the
+    # private key, but parsing it unguarded turns a malformed credential into
+    # a 500 instead of a 401, and `optional_user` would propagate that out of
+    # an endpoint that is supposed to tolerate a bad token.
+    try:
+        subject = UUID(claims["sub"])
+    except (TypeError, ValueError) as exc:
+        raise Unauthenticated("Your session is no longer valid.") from exc
+
+    user = session.get(User, subject)
     if user is None or user.account_state is AccountState.ERASED:
         raise Unauthenticated("Your session is no longer valid.")
 

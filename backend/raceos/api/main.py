@@ -13,12 +13,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from raceos.api.deps import enforce_default_rate_limit
 from raceos.api.errors import HTTP_STATUS, ErrorCode, RaceOSError, RateLimited
 from raceos.api.middleware import (
     REQUEST_ID_HEADER,
@@ -90,11 +91,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Deterministic race-plan solver and API. All numbers in a plan come "
             "from the solver; the language model never computes one."
         ),
-        openapi_url=f"{API_PREFIX}/openapi.json",
+        # The schema goes with the docs. It is not a secret, but publishing a
+        # precise map of 156 routes, their shapes and their error codes only
+        # helps somebody probing them; the frontend builds against the copy
+        # committed in its own repo, so nothing needs it served at runtime.
+        openapi_url=None if settings.is_production else f"{API_PREFIX}/openapi.json",
         docs_url=f"{API_PREFIX}/docs" if not settings.is_production else None,
         redoc_url=None,
         servers=[{"url": settings.api_base_url}],
         lifespan=lifespan,
+        # A ceiling under every route. Per-route limits are stricter and sit
+        # on top; this is what stops anything unlisted being unmetered.
+        dependencies=[Depends(enforce_default_rate_limit)],
     )
     app.state.settings = settings
 
@@ -105,7 +113,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=list(settings.cors_origin_list),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", REQUEST_ID_HEADER],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-RaceOS-Client",
+            REQUEST_ID_HEADER,
+        ],
         expose_headers=[REQUEST_ID_HEADER, "Retry-After", "ETag", "Server-Timing"],
         max_age=600,
     )
@@ -141,6 +155,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs.router)
 
     return app
+
+
+#: What a validation failure may say back to the caller.
+#:
+#: `input` and `ctx` are deliberately not on it. Pydantic puts the offending
+#: value in `input`, and echoing it meant a mistyped password came straight
+#: back in the response body — into devtools, into any client-side error
+#: reporter, into a proxy log, into a support screenshot. The caller already
+#: knows what it sent; what it needs is which field and why.
+_PUBLIC_ERROR_KEYS = ("type", "loc", "msg")
+
+
+def _public_validation_error(error: dict[str, Any]) -> dict[str, str]:
+    return {key: str(error[key]) for key in _PUBLIC_ERROR_KEYS if key in error}
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -185,7 +213,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
                     "code": ErrorCode.INVALID_INPUT.value,
                     "message": errors[0]["msg"] if errors else "Invalid request.",
                     **({"field": first_field} if first_field else {}),
-                    "details": {"errors": [{k: str(v) for k, v in e.items()} for e in errors]},
+                    "details": {"errors": [_public_validation_error(e) for e in errors]},
                     "request_id": _request_id(request),
                 }
             },

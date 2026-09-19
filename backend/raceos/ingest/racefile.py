@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from xml.etree import ElementTree as ET
 
 from raceos.domain.enums import RaceFileFormat
+from raceos.ingest.xml_guard import XmlNotAllowedError, ensure_no_doctype
 
 #: The FIT epoch, matching the writer.
 FIT_EPOCH = datetime(1989, 12, 31, tzinfo=UTC)
@@ -425,6 +426,10 @@ def _float(text: str | None) -> float | None:
 
 def parse_gpx(data: bytes) -> ParsedRaceFile:
     try:
+        ensure_no_doctype(data, filename="This GPX file")
+    except XmlNotAllowedError as error:
+        raise RaceFileError(str(error)) from error
+    try:
         root = ET.fromstring(data)
     except ET.ParseError as error:
         raise RaceFileError(
@@ -465,6 +470,10 @@ def parse_gpx(data: bytes) -> ParsedRaceFile:
 
 
 def parse_tcx(data: bytes) -> ParsedRaceFile:
+    try:
+        ensure_no_doctype(data, filename="This TCX file")
+    except XmlNotAllowedError as error:
+        raise RaceFileError(str(error)) from error
     try:
         root = ET.fromstring(data)
     except ET.ParseError as error:

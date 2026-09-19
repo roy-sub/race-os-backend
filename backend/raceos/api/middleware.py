@@ -125,8 +125,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
         )
+        # A JSON API has no reason to be readable by a cross-origin document
+        # or to share a browsing-context group with one. CORP shuts the door
+        # that `<img src=api/...>`-style probing leans on, and COOP keeps a
+        # window opener from reaching into this origin.
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         if self._hsts:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"

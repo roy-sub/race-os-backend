@@ -827,9 +827,7 @@ def search_accounts(
         clauses.append(User.account_state == state)
     if role is not None:
         clauses.append(
-            User.id.in_(
-                select(AdminRoleAssignment.user_id).where(AdminRoleAssignment.role == role)
-            )
+            User.id.in_(select(AdminRoleAssignment.user_id).where(AdminRoleAssignment.role == role))
         )
 
     total = int(session.scalar(select(func.count()).select_from(User).where(*clauses)) or 0)

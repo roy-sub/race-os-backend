@@ -198,6 +198,13 @@ def parse_gpx(data: bytes, *, filename: str = "route.gpx") -> list[tuple[float, 
     """
     import gpxpy
 
+    from raceos.ingest.xml_guard import XmlNotAllowedError, ensure_no_doctype
+
+    try:
+        ensure_no_doctype(data, filename=filename)
+    except XmlNotAllowedError as error:
+        raise GpxError(str(error)) from error
+
     try:
         parsed = gpxpy.parse(data.decode("utf-8", errors="replace"))
     except Exception as exc:  # gpxpy raises several unrelated types

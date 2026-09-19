@@ -159,7 +159,12 @@ class TerrariumTiles(ElevationSource):
 
         if image.size != (self.tile_size, self.tile_size):
             image = image.resize((self.tile_size, self.tile_size))
-        pixels = list(image.getdata())
+        # `Image.getdata` is deprecated in Pillow 12 and removed in 14. The
+        # replacement returns the same flat sequence of RGB tuples; the
+        # fallback keeps this working against an older Pillow in a local
+        # environment that has not been reinstalled.
+        flatten = getattr(image, "get_flattened_data", None)
+        pixels = list(flatten() if flatten is not None else image.getdata())
         rows = [
             pixels[row * self.tile_size : (row + 1) * self.tile_size]
             for row in range(self.tile_size)

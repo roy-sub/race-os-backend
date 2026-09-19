@@ -126,7 +126,7 @@ def test_search_matches_email_and_name(api: TestClient, api_db) -> None:
 
 
 def test_the_total_counts_everything_matching_not_the_page(api: TestClient, api_db) -> None:
-    """"Three results" and "the first three of nine hundred" are different
+    """ "Three results" and "the first three of nine hundred" are different
     facts, and only one of them means stop searching."""
     headers = _staff(api, api_db, "admin@staff.example.com", AdminRole.ADMIN)
     for index in range(5):
@@ -280,7 +280,7 @@ def test_revenue_is_reported_per_currency_and_never_summed(api: TestClient, api_
 
 
 def test_a_currency_nobody_paid_in_is_absent_rather_than_zero(api: TestClient, api_db) -> None:
-    """"Nobody paid in euros" and "we do not sell in euros" are different
+    """ "Nobody paid in euros" and "we do not sell in euros" are different
     facts, and a zero row says neither."""
     headers = _staff(api, api_db, "admin@staff.example.com", AdminRole.ADMIN)
     athlete = _athlete(api, "payer@example.com")
@@ -472,7 +472,7 @@ def test_rejecting_takes_nothing_away_from_the_submitter(api: TestClient, api_db
 
 
 def test_a_rejection_must_say_why(api: TestClient, api_db) -> None:
-    """"No" on its own is a wall, not a review."""
+    """ "No" on its own is a wall, not a review."""
     headers = _staff(api, api_db, "ops@staff.example.com", AdminRole.OPS)
     owner = _athlete(api, "owner@example.com")
     course = _submitted_course(api_db, owner["id"], slug="my-race", name="My Race")
@@ -581,9 +581,7 @@ def test_publication_reaches_the_signed_out_directory_too(api: TestClient, api_d
     assert after["meta"]["total"] == 1
 
 
-def test_a_past_due_subscription_still_counts_as_something_to_lose(
-    api: TestClient, api_db
-) -> None:
+def test_a_past_due_subscription_still_counts_as_something_to_lose(api: TestClient, api_db) -> None:
     """It has not been cancelled. Leaving it out of the denominator would
     report a worse churn rate than the month actually had."""
     headers = _staff(api, api_db, "admin@staff.example.com", AdminRole.ADMIN)

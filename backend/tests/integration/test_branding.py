@@ -77,9 +77,7 @@ def coach(api: TestClient, api_db, paywall):
     ).json()
     row = api_db.scalar(select(User).where(User.email == "brand.coach@example.com"))
     row.tier = UserTier.COACH
-    api_db.add(
-        Subscription(user_id=row.id, tier=UserTier.COACH, status=SubscriptionStatus.ACTIVE)
-    )
+    api_db.add(Subscription(user_id=row.id, tier=UserTier.COACH, status=SubscriptionStatus.ACTIVE))
     api_db.commit()
     return {
         "headers": {"Authorization": f"Bearer {created['access_token']}"},
@@ -119,9 +117,7 @@ def test_a_readable_accent_is_accepted_and_normalised(coach, api: TestClient) ->
     assert response.json()["effective_accent_hex"] == "#1A4D8F"
 
 
-def test_an_accent_too_pale_to_print_is_refused_with_the_reason(
-    coach, api: TestClient
-) -> None:
+def test_an_accent_too_pale_to_print_is_refused_with_the_reason(coach, api: TestClient) -> None:
     """The race card is read through a wet sleeve at hour nine, and the person
     holding an unreadable one cannot fix it."""
     response = api.patch(
@@ -256,9 +252,7 @@ def test_nobody_reads_another_coachs_logo(coach, api: TestClient, api_db, paywal
     ).json()
     row = api_db.scalar(select(User).where(User.email == "other.coach@example.com"))
     row.tier = UserTier.COACH
-    api_db.add(
-        Subscription(user_id=row.id, tier=UserTier.COACH, status=SubscriptionStatus.ACTIVE)
-    )
+    api_db.add(Subscription(user_id=row.id, tier=UserTier.COACH, status=SubscriptionStatus.ACTIVE))
     api_db.commit()
 
     intruder = {"Authorization": f"Bearer {other['access_token']}"}
@@ -429,9 +423,7 @@ def test_the_branding_follows_the_coach_not_the_athlete(
 
 
 @needs_bundle
-def test_a_lapsed_coach_stops_branding_new_exports(
-    branded_plan, api: TestClient, api_db
-) -> None:
+def test_a_lapsed_coach_stops_branding_new_exports(branded_plan, api: TestClient, api_db) -> None:
     """The plan itself is unaffected: it was paid for and it stays theirs."""
     from raceos.api.routers.exports import _branding_allowed
     from raceos.config import Settings

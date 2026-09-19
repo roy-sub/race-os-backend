@@ -139,9 +139,11 @@ def invite(
     link.revoked_at = None
     link.invite_token_hash = issued.hashed
     link.invite_expires_at = now + timedelta(days=INVITE_TTL_DAYS)
-    # Retained only while email delivery is a no-op, so support can hand the
-    # invite over manually. Admin-only; never in a public response.
-    link.invite_delivery_link = f"{settings.app_base_url}/coach/accept?token={issued.raw}"
+    # The raw token is not kept. Only its hash is stored, which is what makes
+    # a stolen database useless for accepting invitations; writing the link
+    # beside the hash would have undone that for the sake of a convenience
+    # nothing actually reads.
+    link.invite_delivery_link = None
     # Permissions always start empty. An accepted invite grants nothing until
     # the athlete chooses what to grant.
     link.perm_plans = False

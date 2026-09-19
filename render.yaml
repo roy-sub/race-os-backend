@@ -51,6 +51,14 @@ services:
       --timeout 120
       --graceful-timeout 30
       --access-logfile -
+      --forwarded-allow-ips '*'
+
+    # `--forwarded-allow-ips '*'` is safe here and necessary. Render's proxy
+    # is the only path to this service — the instance takes no other inbound
+    # traffic — and it overwrites `X-Forwarded-For`, so the header cannot be
+    # spoofed by a caller. Without it every request arrives wearing the
+    # proxy's address, which collapses every per-IP rate limit into a single
+    # shared bucket that one attacker can exhaust for all users.
 
     # Liveness only. It checks nothing external on purpose: if it verified the
     # database, a brief database blip would make Render restart healthy
@@ -68,6 +76,10 @@ services:
       - key: WEB_CONCURRENCY
         value: "2"
 
+      # Believe `X-Forwarded-For`. See the note on `--forwarded-allow-ips`
+      # above: without this the rate limiter cannot tell callers apart.
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
       - key: APP_ENV
         value: production
       - key: LOG_LEVEL

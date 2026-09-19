@@ -73,9 +73,7 @@ def test_an_athlete_can_submit_a_finding_with_a_trace(api: TestClient, api_db, c
     assert body["upload_count"] == 1
 
 
-def test_ten_athletes_reporting_one_thing_make_one_finding(
-    api: TestClient, api_db, course
-) -> None:
+def test_ten_athletes_reporting_one_thing_make_one_finding(api: TestClient, api_db, course) -> None:
     """The alternative shape — ten findings with one upload each — looks like
     ten unrelated problems and never reaches the promotion threshold."""
     for index in range(4):
@@ -161,9 +159,7 @@ def test_the_trace_is_optional(api: TestClient, api_db, course) -> None:
     assert _post(api, headers, course.slug, gpx=False).status_code == 201
 
 
-def test_an_athlete_can_see_what_became_of_their_report(
-    api: TestClient, api_db, course
-) -> None:
+def test_an_athlete_can_see_what_became_of_their_report(api: TestClient, api_db, course) -> None:
     """A contribution surface with no outcome teaches people to stop."""
     headers = _athlete(api, "reporter@example.com")
     _post(api, headers, course.slug)

@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Cookie, Header, Request, Response, status
 
+from raceos.api import deps
 from raceos.api.deps import Config, CurrentUser, DbSession
 from raceos.api.schemas.auth import (
     AuthResponse,
@@ -35,8 +36,14 @@ from raceos.services.rate_limit import enforce_rate_limit
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-def _client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
+def _client_ip(request: Request, settings: Settings) -> str | None:
+    """Delegates to the shared resolver, which honours the proxy chain.
+
+    Taking the socket address directly put every caller behind Render's proxy
+    into one rate-limit bucket, which made the per-IP limits on these three
+    routes a shared quota an attacker could exhaust for everyone.
+    """
+    return deps.client_ip(request, settings)
 
 
 def _cookie_policy(settings: Settings) -> tuple[bool, Literal["lax", "none"]]:
@@ -104,7 +111,7 @@ def signup(
 ) -> AuthResponse:
     enforce_rate_limit(
         session,
-        subject=f"ip:{_client_ip(request)}",
+        subject=f"ip:{_client_ip(request, settings)}",
         bucket="auth.signup",
         limit=settings.rate_limit_auth_per_minute,
         settings=settings,
@@ -116,7 +123,7 @@ def signup(
         name=payload.name,
         settings=settings,
         user_agent=user_agent,
-        ip=_client_ip(request),
+        ip=_client_ip(request, settings),
     )
     session.commit()
     return _auth_response(result, response, settings)
@@ -137,7 +144,7 @@ def login(
     # stranger out.
     enforce_rate_limit(
         session,
-        subject=f"ip:{_client_ip(request)}",
+        subject=f"ip:{_client_ip(request, settings)}",
         bucket="auth.login",
         limit=settings.rate_limit_auth_per_minute,
         settings=settings,
@@ -149,7 +156,7 @@ def login(
             password=payload.password,
             settings=settings,
             user_agent=user_agent,
-            ip=_client_ip(request),
+            ip=_client_ip(request, settings),
         )
     except Exception:
         # The failed-attempt counter must survive the rejection, so commit the
@@ -161,6 +168,24 @@ def login(
     return _auth_response(result, response, settings)
 
 
+#: The header that proves a refresh came from our own client.
+#:
+#: This endpoint is authenticated by the refresh cookie alone, and in
+#: production that cookie is `SameSite=None` because the frontend and the API
+#: are on different registrable domains. Without this header the request was a
+#: CORS "simple request": any page on the internet could POST to it with the
+#: victim's cookie attached. The attacker could not read the reply — CORS
+#: stops that — but `Set-Cookie` still applied, so the token rotated under the
+#: victim's own tab. The next legitimate refresh then presented a rotated
+#: token, reuse detection fired exactly as designed, and every session for
+#: that user was revoked. Any website could sign any athlete out, on repeat.
+#:
+#: A header outside the CORS safelist cannot be sent cross-origin without a
+#: preflight, and the preflight is answered against `CORS_ALLOWED_ORIGINS`.
+#: So this turns the attack into a request the browser refuses to make.
+CLIENT_HEADER = "X-RaceOS-Client"
+
+
 @router.post("/refresh", summary="Rotate the session")
 def refresh(
     request: Request,
@@ -169,9 +194,14 @@ def refresh(
     settings: Config,
     user_agent: Annotated[str | None, Header()] = None,
     raceos_refresh: Annotated[str | None, Cookie()] = None,
+    x_raceos_client: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     from raceos.api.errors import Unauthenticated
 
+    if not x_raceos_client:
+        # Deliberately the same answer as a missing cookie: a cross-origin
+        # caller learns nothing about whether a session existed.
+        raise Unauthenticated("No session to refresh.")
     if not raceos_refresh:
         raise Unauthenticated("No session to refresh.")
     result = auth_service.refresh_session(
@@ -179,7 +209,7 @@ def refresh(
         refresh_token=raceos_refresh,
         settings=settings,
         user_agent=user_agent,
-        ip=_client_ip(request),
+        ip=_client_ip(request, settings),
     )
     session.commit()
     return _auth_response(result, response, settings)
@@ -236,7 +266,7 @@ def forgot_password(
     """
     enforce_rate_limit(
         session,
-        subject=f"ip:{_client_ip(request)}",
+        subject=f"ip:{_client_ip(request, settings)}",
         bucket="auth.forgot",
         limit=settings.rate_limit_auth_per_minute,
         settings=settings,

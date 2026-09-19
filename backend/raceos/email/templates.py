@@ -29,6 +29,7 @@ def verification_email(
         subject="Confirm your RaceOS email address",
         template_key="auth.verify_email",
         delivery_link=link,
+        secret=token,
         body_text=(
             f"{greeting}\n\n"
             f"Confirm your email address to finish setting up RaceOS:\n\n"
@@ -55,6 +56,7 @@ def password_reset_email(
         subject="Reset your RaceOS password",
         template_key="auth.password_reset",
         delivery_link=link,
+        secret=token,
         body_text=(
             f"{greeting}\n\n"
             f"Use this link to choose a new password:\n\n"
@@ -82,6 +84,7 @@ def coach_invite_email(
         subject=f"{who} would like to coach you on RaceOS",
         template_key="coach.invite",
         delivery_link=link,
+        secret=token,
         body_text=(
             f"{who} has invited you to link your RaceOS account.\n\n"
             f"  {link}\n\n"

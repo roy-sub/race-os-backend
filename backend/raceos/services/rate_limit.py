@@ -51,6 +51,18 @@ def check_rate_limit(
 
     The upsert is atomic, so two concurrent requests cannot both read the same
     count and both decide they are under the limit.
+
+    **The count is committed immediately, before the request it is counting
+    runs.** Without that the increment lives in the request's transaction and
+    dies with it, so every request that *raises* — a rejected login, a 404, a
+    validation error — was never counted. That inverted the limiter: it
+    throttled successful traffic and let failures through unmetered, which is
+    exactly backwards for the endpoint it was written to protect.
+
+    Committing here is safe because the limiter is the first thing a request
+    does: it runs as a dependency, before any handler body, so there is no
+    earlier write in the session for this commit to flush. Anything that
+    writes before calling this would break that invariant.
     """
     if not settings.rate_limit_enabled:
         return RateLimitVerdict(allowed=True, remaining=limit, retry_after_seconds=0)
@@ -68,6 +80,9 @@ def check_rate_limit(
         .returning(RateLimitCounter.__table__.c.count)
     )
     count = int(session.execute(statement).scalar_one())
+    # See the docstring: durable before the request it guards, or it counts
+    # only the requests that were going to succeed anyway.
+    session.commit()
 
     remaining = max(0, limit - count)
     retry_after = int((window + timedelta(minutes=1) - moment).total_seconds()) + 1

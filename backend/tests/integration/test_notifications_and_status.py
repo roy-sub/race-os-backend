@@ -189,7 +189,7 @@ def test_a_paid_but_unsolved_race_does_not_read_as_merely_a_draft(
 def test_downloading_an_export_makes_the_plan_read_as_exported(
     seeded, api: TestClient, signed_up
 ) -> None:
-    """"Exported" was specified as a status and could not be built, because
+    """ "Exported" was specified as a status and could not be built, because
     nothing recorded that an export had happened. Now one fact does."""
     headers = signed_up["headers"]
     for key, value in ATHLETE_M.items():
@@ -211,18 +211,19 @@ def test_downloading_an_export_makes_the_plan_read_as_exported(
     solved = api.post(f"/api/v1/plans/{plan_id}/solve", headers=headers, json={})
     assert solved.status_code == 200, solved.text[:400]
 
-    assert api.get("/api/v1/dashboard", headers=headers).json()["races"][0][
-        "display_status"
-    ] == "active"
-
     assert (
-        api.get(f"/api/v1/plans/{plan_id}/export/race-card.pdf", headers=headers).status_code
-        == 200
+        api.get("/api/v1/dashboard", headers=headers).json()["races"][0]["display_status"]
+        == "active"
     )
 
-    assert api.get("/api/v1/dashboard", headers=headers).json()["races"][0][
-        "display_status"
-    ] == "exported"
+    assert (
+        api.get(f"/api/v1/plans/{plan_id}/export/race-card.pdf", headers=headers).status_code == 200
+    )
+
+    assert (
+        api.get("/api/v1/dashboard", headers=headers).json()["races"][0]["display_status"]
+        == "exported"
+    )
 
 
 @needs_bundle

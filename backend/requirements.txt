@@ -3,6 +3,12 @@
 # Installed directly by Render's native Python runtime (no Docker). Pinned to
 # exact versions so a deploy installs what the test suite was proven against.
 #
+# Pins are a supply-chain decision, not a preference: they make a build
+# reproducible, and they make it exactly as vulnerable as the day they were
+# written unless something checks. `pip-audit -r backend/requirements.txt`
+# is that check, and it belongs in the release routine — a pinned dependency
+# nobody re-audits is how a fixed CVE stays exploitable in production.
+#
 # Deliberately absent, and their absence is asserted by
 # tests/unit/test_dependency_boundaries.py:
 #   - redis / celery / kombu / flower  — V1 has no queue and no broker
@@ -11,10 +17,10 @@
 #   - any athlete-data provider SDK     — permanently out of scope (Part 0.4 C1)
 
 # --- web -------------------------------------------------------------------
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
 gunicorn==23.0.0
-python-multipart==0.0.20
+python-multipart==0.0.31
 
 # --- config & validation ---------------------------------------------------
 pydantic==2.10.4
@@ -29,7 +35,7 @@ GeoAlchemy2==0.16.0
 
 # --- auth ------------------------------------------------------------------
 argon2-cffi==23.1.0
-PyJWT[crypto]==2.10.1
+PyJWT[crypto]==2.13.0
 itsdangerous==2.2.0
 
 # --- external services (allowlist only) ------------------------------------
@@ -41,9 +47,9 @@ httpx==0.28.1
 # --- files, geometry, exports ----------------------------------------------
 garmin-fit-sdk==21.158.0
 gpxpy==1.6.2
-lxml==5.3.0
+lxml==6.1.0
 shapely==2.0.6
-WeasyPrint==63.1
+WeasyPrint==70.0
 icalendar==6.1.0
 pywebpush==2.0.3
-Pillow==11.0.0
+Pillow==12.3.0

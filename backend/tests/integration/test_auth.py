@@ -16,7 +16,11 @@ from sqlalchemy import select
 
 from raceos.config import Settings
 from raceos.db.models import EmailMessage, PasswordResetToken, User
-from raceos.services import security
+from raceos.services import auth_service, security
+
+#: What the web client sends, and what the route now requires. See
+#: `raceos.api.routers.auth.CLIENT_HEADER`.
+CLIENT = {"X-RaceOS-Client": "web"}
 
 pytestmark = pytest.mark.integration
 
@@ -199,7 +203,7 @@ def test_a_refresh_token_is_not_accepted_as_an_access_token(api: TestClient, sig
 
 def test_refresh_rotates_the_token(api: TestClient, signed_up) -> None:
     first = api.cookies.get("raceos_refresh")
-    response = api.post("/api/v1/auth/refresh")
+    response = api.post("/api/v1/auth/refresh", headers=CLIENT)
     assert response.status_code == 200
     assert api.cookies.get("raceos_refresh") != first
 
@@ -213,19 +217,19 @@ def test_reusing_a_rotated_refresh_token_revokes_the_whole_family(
     against an attacker holding a valid refresh token.
     """
     stolen = api.cookies.get("raceos_refresh")
-    api.post("/api/v1/auth/refresh")  # rotates; `stolen` is now spent
+    api.post("/api/v1/auth/refresh", headers=CLIENT)  # rotates; `stolen` is now spent
 
     api.cookies.set("raceos_refresh", stolen)
-    replay = api.post("/api/v1/auth/refresh")
+    replay = api.post("/api/v1/auth/refresh", headers=CLIENT)
     assert replay.status_code == 401
 
     # And the session that legitimately rotated is dead too.
-    assert api.post("/api/v1/auth/refresh").status_code == 401
+    assert api.post("/api/v1/auth/refresh", headers=CLIENT).status_code == 401
 
 
 def test_logout_revokes_the_session(api: TestClient, signed_up) -> None:
     assert api.post("/api/v1/auth/logout", headers=signed_up["headers"]).status_code == 204
-    assert api.post("/api/v1/auth/refresh").status_code == 401
+    assert api.post("/api/v1/auth/refresh", headers=CLIENT).status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -242,19 +246,41 @@ def test_forgot_password_never_leaks_account_existence(api: TestClient, signed_u
 
 
 def test_the_reset_link_is_never_in_the_public_response(api: TestClient, signed_up, api_db) -> None:
-    """With email disabled the link is written to the database and the log.
-
-    Returning it here would turn "forgot password" into an account-takeover
-    primitive — anyone who can name an address could seize the account.
-    """
+    """Returning it would turn "forgot password" into an account-takeover
+    primitive — anyone who could name an address could seize the account."""
     response = api.post("/api/v1/auth/forgot-password", json={"email": "elena.marsh@example.com"})
     assert "token" not in response.text
     assert "reset-password?token" not in response.text
 
     stored = api_db.scalar(select(PasswordResetToken))
     assert stored is not None
-    assert stored.delivery_link is not None
-    assert "reset-password?token=" in stored.delivery_link
+    assert stored.token_hash
+
+
+def test_a_reset_token_is_never_written_down(api: TestClient, signed_up, api_db) -> None:
+    """Only the hash is stored — including in the message we rendered.
+
+    The row used to carry `delivery_link`, and `email_messages` the body that
+    contained it. Between them, read access to the database was account
+    takeover for every user who had ever asked for a reset, which is a far
+    larger blast radius than the support convenience it bought.
+    """
+    api.post("/api/v1/auth/forgot-password", json={"email": "elena.marsh@example.com"})
+    api_db.commit()
+
+    stored = api_db.scalar(select(PasswordResetToken))
+    assert stored.delivery_link is None
+
+    message = api_db.scalar(
+        select(EmailMessage).where(EmailMessage.template_key == "auth.password_reset")
+    )
+    assert message is not None, "the message is still recorded"
+    assert "reset-password?token=" in message.body_text, "still recognisably the reset email"
+    assert "[redacted]" in message.body_text, "but the token itself is gone"
+
+    # The decisive check: nothing stored anywhere hashes to the live token.
+    for value in (message.body_text, message.body_html or "", stored.delivery_link or ""):
+        assert security.hash_token(value.strip()) != stored.token_hash
 
 
 def test_reset_password_signs_every_other_session_out(
@@ -264,10 +290,11 @@ def test_reset_password_signs_every_other_session_out(
     old_headers = signed_up["headers"]
     assert api.get("/api/v1/auth/me", headers=old_headers).status_code == 200
 
-    api.post("/api/v1/auth/forgot-password", json={"email": "elena.marsh@example.com"})
+    raw_token = auth_service.request_password_reset(
+        api_db, email="elena.marsh@example.com", settings=api_settings
+    )
     api_db.commit()
-    record = api_db.scalar(select(PasswordResetToken))
-    raw_token = record.delivery_link.split("token=")[1]
+    assert raw_token
 
     # `iat` has one-second resolution, so a reset in the same second as the
     # token's issue would not appear to postdate it.
@@ -292,10 +319,13 @@ def test_reset_password_signs_every_other_session_out(
     )
 
 
-def test_a_reset_token_is_single_use(api: TestClient, signed_up, api_db) -> None:
-    api.post("/api/v1/auth/forgot-password", json={"email": "elena.marsh@example.com"})
+def test_a_reset_token_is_single_use(
+    api: TestClient, signed_up, api_db, api_settings: Settings
+) -> None:
+    raw = auth_service.request_password_reset(
+        api_db, email="elena.marsh@example.com", settings=api_settings
+    )
     api_db.commit()
-    raw = api_db.scalar(select(PasswordResetToken)).delivery_link.split("token=")[1]
 
     assert (
         api.post(
@@ -313,11 +343,14 @@ def test_a_reset_token_is_single_use(api: TestClient, signed_up, api_db) -> None
     )
 
 
-def test_an_expired_reset_token_is_refused(api: TestClient, signed_up, api_db) -> None:
-    api.post("/api/v1/auth/forgot-password", json={"email": "elena.marsh@example.com"})
+def test_an_expired_reset_token_is_refused(
+    api: TestClient, signed_up, api_db, api_settings: Settings
+) -> None:
+    raw = auth_service.request_password_reset(
+        api_db, email="elena.marsh@example.com", settings=api_settings
+    )
     api_db.commit()
     record = api_db.scalar(select(PasswordResetToken))
-    raw = record.delivery_link.split("token=")[1]
     record.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     api_db.commit()
 

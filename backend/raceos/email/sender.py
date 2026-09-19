@@ -10,9 +10,14 @@ The consequences are handled rather than papered over:
 * ``REQUIRE_EMAIL_VERIFICATION=false``, so new accounts are created already
   verified. The whole verification flow is built and tested, so flipping the
   flag later needs no code change.
-* Password reset writes its link to the log and to the database, and an
-  admin-only endpoint hands it to support. **It is never in a public response**
-  — that would turn "forgot password" into an account-takeover primitive.
+* **A credential is never written to a log or to the database.** A reset or
+  verification link carries a bearer token, so storing the rendered message
+  verbatim would put a working account-takeover primitive in `email_messages`,
+  in the application log, and in every backup and log drain downstream of
+  them. `RenderedEmail.secret` names the token, and everything that leaves the
+  process on a path other than the transport itself has it redacted. What is
+  kept is the shape of the message — who, what template, delivered or not —
+  which is what makes the subsystem observable without making it dangerous.
 * In-app notifications are the live V1 channel. Email and push are transports
   that are currently off, not features that are missing.
 """
@@ -33,6 +38,10 @@ from raceos.logging import get_logger
 logger = get_logger(__name__)
 
 
+#: What replaces a credential anywhere the message is stored or logged.
+REDACTED = "[redacted]"
+
+
 @dataclass(frozen=True)
 class RenderedEmail:
     to_address: str
@@ -41,9 +50,36 @@ class RenderedEmail:
     body_text: str
     body_html: str | None = None
     user_id: UUID | None = None
-    #: A link the message contains, retained so support can hand it over while
-    #: delivery is a no-op. Never returned by a public endpoint.
+    #: The link the message contains, if any. Only ever sent to the transport.
     delivery_link: str | None = None
+    #: The bearer token inside `delivery_link`, when the message carries one.
+    #: Naming it here is what lets everything else redact it without having to
+    #: recognise a token by shape.
+    secret: str | None = None
+
+    def redacted(self, value: str | None) -> str | None:
+        """`value` with this message's credential removed.
+
+        Substring replacement rather than a pattern: we know exactly what the
+        secret is, so there is nothing to infer and nothing to miss.
+        """
+        if value is None or not self.secret:
+            return value
+        return value.replace(self.secret, REDACTED)
+
+
+def mask_address(address: str) -> str:
+    """An address recognisable in a log line without being readable.
+
+    Support needs to tell one message from another; a log reader does not need
+    the mailbox. `elena.marsh@example.com` becomes `e***h@example.com`.
+    """
+    local, _, domain = address.partition("@")
+    if not domain:
+        return REDACTED
+    if len(local) <= 2:
+        return f"{local[:1]}***@{domain}"
+    return f"{local[0]}***{local[-1]}@{domain}"
 
 
 @dataclass(frozen=True)
@@ -70,14 +106,16 @@ class LoggingEmailSender(EmailSender):
     """
 
     def send(self, message: RenderedEmail) -> SendResult:
+        # Neither the body nor the link: a verification or reset message
+        # contains a live bearer token, and application logs are read by more
+        # people, and kept in more places, than the database is.
         logger.info(
             "email rendered (delivery disabled)",
             extra={
-                "email_to": message.to_address,
+                "email_to": mask_address(message.to_address),
                 "email_subject": message.subject,
                 "email_template": message.template_key,
-                "email_body": message.body_text,
-                "email_link": message.delivery_link,
+                "email_carries_credential": bool(message.secret),
             },
         )
         return SendResult(delivered=False, error="EMAIL_ENABLED=false")
@@ -138,10 +176,14 @@ def build_sender(settings: Settings) -> EmailSender:
 
 
 def deliver(session: Session, message: RenderedEmail, settings: Settings) -> EmailMessage:
-    """Send and record. **Every rendered message is persisted**, sent or not.
+    """Send and record. **Every rendered message is persisted**, sent or not —
+    with its credential removed.
 
-    That is what lets support read out a reset link that could not be
-    delivered, and what makes the email subsystem observable in V1 at all.
+    The transport receives the real message; the row keeps the redacted one.
+    A reset link in `email_messages` would mean that read access to the
+    database, a stale backup or an over-broad support query is account
+    takeover for every user who ever asked for one, which is a far larger
+    blast radius than the convenience it was there to buy.
     """
     result = build_sender(settings).send(message)
     record = EmailMessage(
@@ -150,8 +192,8 @@ def deliver(session: Session, message: RenderedEmail, settings: Settings) -> Ema
         from_address=settings.email_from_address,
         subject=message.subject,
         template_key=message.template_key,
-        body_text=message.body_text,
-        body_html=message.body_html,
+        body_text=message.redacted(message.body_text) or "",
+        body_html=message.redacted(message.body_html),
         transport=settings.email_transport.value,
         delivered=result.delivered,
         delivery_error=result.error,

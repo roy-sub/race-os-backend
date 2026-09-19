@@ -15,6 +15,7 @@ import pytest
 
 from raceos.api.main import create_app
 from raceos.config import Settings
+from tests.routes import iter_routes
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RENDER_YAML = REPO_ROOT / "render.yaml"
@@ -32,7 +33,7 @@ def render() -> str:
 @pytest.fixture(scope="module")
 def paths() -> set[str]:
     app = create_app()
-    return {route.path for route in app.routes}  # type: ignore[attr-defined]
+    return {route.path for route in iter_routes(app)}  # type: ignore[attr-defined]
 
 
 def test_every_declared_variable_is_one_the_app_reads(render: str) -> None:
