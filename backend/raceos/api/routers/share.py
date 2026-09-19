@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.orm import Session
 
+from raceos.api import deps
 from raceos.api.deps import Config, CurrentUser, DbSession, get_db
 from raceos.api.errors import NotFound
 from raceos.api.schemas.coach import (
@@ -107,7 +108,10 @@ def resolve_share(
         token=token,
         settings=settings,
         access_code=access_code,
-        ip=request.client.host if request.client else None,
+        # Through the resolver, not the socket: behind the proxy the raw
+        # address is the proxy's, so every recorded open would carry the same
+        # hashed IP and the "who opened my plan" trail would say nothing.
+        ip=deps.client_ip(request, settings),
         user_agent=user_agent,
     )
     detail = plan_detail(session, plan).model_dump(mode="json")
