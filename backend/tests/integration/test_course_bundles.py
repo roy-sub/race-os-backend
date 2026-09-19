@@ -54,6 +54,7 @@ EXPECTED_SLUGS = {
     "kalmar-703",
     # The 2026 season.
     "calella-barcelona-full",
+    "versailles-703",
     "portugal-cascais-703",
     "portugal-cascais-full",
     "malaga-703",
@@ -301,6 +302,7 @@ def test_directory_filters_by_distance(client: TestClient, seeded: None) -> None
     assert slugs == {
         "kalmar-703",
         "skagen-703",
+        "versailles-703",
         "portugal-cascais-703",
         "malaga-703",
         "porec-703",

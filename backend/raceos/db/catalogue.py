@@ -10,10 +10,13 @@ athlete sees is declared here, once, and the bundles fill it in.
 Three kinds of row:
 
 * **Available.** A generated bundle exists and is loaded, so the race can be
-  entered and planned. Seven events, plus the showcase.
+  entered and planned. The whole 2026 season — eight events — plus the
+  showcase.
 * **Coming soon.** Announced and dated, no course data yet. Listed honestly,
   and not enterable — :func:`raceos.services.course_service` refuses, and the
-  directory renders the row as unavailable rather than hiding it.
+  directory renders the row as unavailable rather than hiding it. No event is
+  in this state today; the row type stays because the next announced season
+  will arrive before its bundles do.
 * **Showcase.** Kalmar 70.3, and only Kalmar. It is the signed-out marketing
   map: a deliberately stylised, out-of-scale illustration of what a course map
   looks like. It is never listed to a signed-in athlete, because sitting it
@@ -89,11 +92,7 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         tone_color="#8a5a2b",
         bundle_slug="calella-barcelona-full",
     ),
-    # Announced and dated, and the one row in the season with no course data.
-    # The Yvelines has no mapped open water wide enough to hold a 70.3 swim —
-    # see `pipelines/course-ingest/specs/12-versailles-703.yaml`, which records
-    # what is missing — so the bundle cannot be generated and the row stays
-    # honest about it rather than pretending to be enterable.
+    # The one inland course, swum in the chateau's own Grand Canal.
     CatalogueEntry(
         slug="versailles-703",
         name="IRONMAN 70.3 Versailles",
@@ -105,8 +104,9 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=48.8049,
         lng=2.1204,
         event_date=date(2026, 10, 11),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#4a4364",
+        bundle_slug="versailles-703",
     ),
     CatalogueEntry(
         slug="portugal-cascais-703",

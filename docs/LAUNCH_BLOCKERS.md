@@ -202,49 +202,54 @@ course's `tone_color`; these three do not. Recorded in
 
 ---
 
-## 7 · One of nine catalogue races is not generated — **narrowed**
+## 7 · Course generation — **CLOSED**
 
-**Was:** six of nine, and a directory of three to charge for. The 2026 season
-is now generated: Calella-Barcelona, both Cascais distances, Málaga, Poreč,
-Costa Navarino and Türkiye, plus the Kalmar showcase. Seven raceable events.
+**Was:** six of nine courses ungenerated, and a directory of three to charge
+for. Then one: Versailles, recorded here as blocked on data rather than on
+effort.
 
-**Still open: IRONMAN 70.3 Versailles**, and it is blocked on data rather than
-on effort. A 70.3 swim is a 1.9 km rectangle at 3:1 — about 710 m by 240 m —
-and every node must sit 15 m inside a real water polygon. Nothing within reach
-of Versailles satisfies that in the pinned Overture water theme: not the
-château's Grand Canal (the real venue, ~60 m wide and absent from the data
-besides), not the Étang de Saint-Quentin, Saclay, Trappes or Rambouillet, not
-Créteil, the Bois de Boulogne or Vaires, and not the Seine at Verneuil or
-Moisson. The nearest water that holds the course is the Étang de la Folie at
-Cergy-Pontoise, 30 km north and in another department.
+**Now:** the whole 2026 season is generated and enterable — Calella-Barcelona,
+Versailles, Portugal-Cascais at both distances, Málaga, Poreč, Costa Navarino
+and Türkiye, plus the Kalmar showcase. Nine rows, nine bundles, nothing listed
+that cannot be planned.
 
-Building it there and calling it Versailles would put a paying athlete's
-course map, terrain, weather and start line 30 km from the race they bought,
-so the catalogue lists the row `COMING_SOON` with its announced date instead —
-which is the state that column exists for.
+**How Versailles was closed**, because the earlier entry here said it could not
+be and that was wrong in a way worth recording. Two mistakes were stacked:
 
-**What closes it,** in order of preference:
+1. **The probe had its axes swapped.** `Point` in this pipeline is
+   `(lng, lat)`, and the ad-hoc bbox that concluded "no water near Versailles"
+   was built as `(lat, lng)`. It was reading a box in the wrong place. The
+   real bbox returns **1,448 water polygons**, including the Étang de
+   Saint-Quentin at 2537 × 1074 m — which would have held the standard course
+   all along.
+2. **The Grand Canal was excluded by subtype.** Overture classifies the
+   château's canal as `reservoir`, correctly: it is ornamental water with no
+   current. `water_kind: canal` accepted only `(canal, river, water)`, so the
+   one course whose swim is famously in a canal could not find its canal.
+   `_SUBTYPE_PREFERENCE["canal"]` now accepts `reservoir`.
 
-1. A licensed course file for the real Grand Canal swim, fed to stages 4–10.
-   This is the right answer: it is a real race with a real published course.
-2. A water source carrying French inland hydrography (IGN BD TOPAGE, or OSM
-   water relations) behind `RoadSource.water_rings_in_bbox`, plus a per-course
-   `rectangle_aspect` override — at 12:1 the swim is 877 m by 73 m, which the
-   Grand Canal would hold. `rectangle_aspect` is global config today and
-   moving it would alter every existing bundle.
+The remaining constraint was real, and is now configuration rather than a
+blocker. A 70.3 swim is 1.9 km, and at the global 3:1 rectangle that is
+710 m × 240 m; the canal's arms are about 60 m across. Swept against the real
+polygon, the widest shape the canal holds is **40:1 — 927 m × 23 m**, which is
+the long out-and-back such a race is actually swum as. `swim.rectangle_aspect`
+overrides the global default per course; Versailles is the only spec that sets
+it, and regenerating Poreč and Türkiye byte-for-byte proves no existing bundle
+moved.
 
-`pipelines/course-ingest/specs/12-versailles-703.yaml` records all of this
-beside the spec, and `status: pending` keeps `regenerate-all` off it.
+**Two venues are still not where the race is**, both recorded in their specs
+and neither a blocker: Türkiye routes from Lara because Belek's resort road
+network cannot close a ring shorter than 152.8 km, and Costa Navarino starts
+at Gialova inside Navarino Bay rather than the open Romanos strand, which has
+no shoreline the water data can anchor a swim to.
 
-**Two venues moved** to get a course at all, both recorded in their specs:
-Türkiye is routed from Lara rather than Belek, whose resort road network
-cannot close a ring shorter than 152.8 km; Costa Navarino starts at Gialova on
-Navarino Bay rather than the open Romanos strand, which has no shoreline the
-water data can anchor a swim to.
-
-**Commercially:** seven raceable events across two distances and five
-countries is a catalogue worth charging for. That part of this entry is
-closed.
+**What is still worth a human's judgement:** the generated courses are hillier
+than the real races — Calella reports 4,169 m over 180 km, and the real event
+is known as a flat, fast course. The pipeline routes its own loops on real
+roads rather than copying published routes, and every bundle is stamped
+`ESTIMATED` and says so on screen. Licensing real course files is the fix, and
+the path for it already exists (README, "Swapping a generated course for a
+real licensed one").
 
 ---
 

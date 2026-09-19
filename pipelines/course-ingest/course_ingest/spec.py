@@ -51,6 +51,16 @@ class CourseSpec:
     water_kind: str
     water_name: str | None
     swim_bearing_deg: float
+    #: Long:short ratio of the swim rectangle, overriding
+    #: ``course.yaml -> swim.rectangle_aspect`` for this course alone. ``None``
+    #: takes the global default, which is what every sea course does.
+    #:
+    #: It exists for water that is long and narrow. A 3:1 rectangle at 70.3
+    #: distance is 710 m by 240 m, which fits a bay and does not fit a canal;
+    #: the same 1.9 km at 40:1 is 927 m by 23 m, which is both a shape the
+    #: Grand Canal at Versailles holds and the out-and-back such a race is
+    #: actually swum as.
+    swim_rectangle_aspect: float | None
     bike: LegSpec
     run: LegSpec
     season_year: int
@@ -100,6 +110,10 @@ def load_spec(path: str | Path) -> CourseSpec:
     swim = _require(data, "swim", path)
     if swim["water_kind"] not in WATER_KINDS:
         raise SpecError(f"{path.name}: swim.water_kind must be one of {WATER_KINDS}")
+    if swim.get("rectangle_aspect") is not None and float(swim["rectangle_aspect"]) < 1.0:
+        raise SpecError(
+            f"{path.name}: swim.rectangle_aspect is long:short and must be at least 1.0"
+        )
 
     def leg(name: str) -> LegSpec:
         raw = _require(data, name, path)
@@ -125,6 +139,9 @@ def load_spec(path: str | Path) -> CourseSpec:
         water_kind=swim["water_kind"],
         water_name=swim.get("water_name"),
         swim_bearing_deg=float(swim.get("bearing_deg", 0.0)),
+        swim_rectangle_aspect=(
+            float(swim["rectangle_aspect"]) if swim.get("rectangle_aspect") is not None else None
+        ),
         bike=leg("bike"),
         run=leg("run"),
         season_year=int(data.get("season_year", 2026)),

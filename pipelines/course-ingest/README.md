@@ -230,21 +230,34 @@ the catalogue and why some of them are deliberately tight.
 
 ## The shipping set
 
-Ten courses are generated. Seven are the 2026 catalogue season — **Calella-Barcelona**,
-**Portugal-Cascais** at both distances, **Málaga**, **Poreč**, **Costa Navarino** and
-**Türkiye**; **Kalmar 70.3** is the signed-out showcase; **Tramuntana Full** and
-**Skagen 70.3** are demo courses the backend's seed retires, kept because between them they
-cover both terrain extremes and a feasibility spread from CLEAR to INFEASIBLE.
+Eleven courses are generated. Eight are the 2026 catalogue season — **Calella-Barcelona**,
+**Versailles**, **Portugal-Cascais** at both distances, **Málaga**, **Poreč**,
+**Costa Navarino** and **Türkiye**; **Kalmar 70.3** is the signed-out showcase;
+**Tramuntana Full** and **Skagen 70.3** are demo courses the backend's seed retires, kept
+because between them they cover both terrain extremes and a feasibility spread from CLEAR to
+INFEASIBLE.
 
 The remaining specs are marked `status: pending`. `regenerate-all` skips them; pass
-`--include-pending` to build them. Two are pending for reasons worth knowing before you try:
+`--include-pending` to build them. One is pending for a reason worth knowing:
+**`10-italy-emilia-romagna-703`** has been run — the 2026 edition was 20 September 2026 and
+the catalogue no longer lists it. The spec is kept as the worked reference for a real-venue
+course; the 2027 edition is a date change and a regenerate.
 
-- **`12-versailles-703`** does not build, and the spec says why at length. There is no water
-  polygon within reach of Versailles that will hold a 1.9 km rectangle at 3:1 — not the Grand
-  Canal, not Saint-Quentin, not the Seine. It is a data gap, not a tuning problem.
-- **`10-italy-emilia-romagna-703`** has been run: the 2026 edition was 20 September 2026 and
-  the catalogue no longer lists it. The spec is kept as the worked reference for a real-venue
-  course; the 2027 edition is a date change and a regenerate.
+### The swim is the constraint inland, not the roads
+
+Versailles is the only course in the set that does not swim in the sea, and it took two fixes
+that are easy to undo by accident. Both are guarded by `tests/test_swim_shape.py`.
+
+**Water is classified by what it is, not by its name.** Overture calls the château's Grand
+Canal a `reservoir` — ornamental water with no current — so `water_kind: canal`, which
+accepted only `(canal, river, water)`, could not find it. The canal preference now includes
+`reservoir`.
+
+**A 3:1 rectangle does not fit a canal.** A 70.3 swim is 1.9 km, which at the global aspect is
+710 m × 240 m; the canal's arms are about 60 m across. Swept against the real polygon, the
+widest shape it holds is 40:1 — 927 m × 23 m — the long out-and-back such a race is swum as.
+`swim.rectangle_aspect` overrides `course.yaml` for one course; leave it unset and nothing
+changes, which is how every sea course stays byte-identical.
 
 ### Two venues are not where the race is
 

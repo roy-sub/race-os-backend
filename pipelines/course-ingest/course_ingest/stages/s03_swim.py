@@ -35,11 +35,17 @@ class SwimDrawError(RuntimeError):
     """No plausible swim course fits in real water at this start."""
 
 
+#: Which Overture water subtypes each declared `water_kind` will accept.
+#:
+#: `canal` includes `reservoir` because an ornamental canal is classified by
+#: what it is rather than by its name: the Grand Canal at Versailles is still
+#: water with no current, so Overture calls it a reservoir. Excluding it meant
+#: the one course whose swim is famously in a canal could not find its canal.
 _SUBTYPE_PREFERENCE = {
     "sea": ("ocean", "physical", "water", "bay"),
     "harbour": ("physical", "ocean", "water", "bay"),
     "lake": ("lake", "reservoir", "water"),
-    "canal": ("canal", "river", "water"),
+    "canal": ("canal", "reservoir", "river", "water"),
 }
 
 
@@ -155,7 +161,15 @@ def draw_swim(plan: BuildPlan, cfg: Config, roads: RoadSource) -> SwimResult:
     shape = swim_cfg["shape_by_distance"][plan.spec.distance_type]
     laps = 2 if shape.endswith("two_lap") else 1
     perimeter = plan.swim_target_m / laps
-    aspect = float(swim_cfg["rectangle_aspect"])
+    # A course may override the rectangle's proportions; see
+    # `CourseSpec.swim_rectangle_aspect`. Nothing else about the shape is
+    # per-course, and a spec that says nothing gets the global default, so no
+    # existing bundle moves.
+    aspect = (
+        plan.spec.swim_rectangle_aspect
+        if plan.spec.swim_rectangle_aspect is not None
+        else float(swim_cfg["rectangle_aspect"])
+    )
     shore_offset = float(swim_cfg["shore_offset_m"])
     clearance_min = float(swim_cfg["min_water_clearance_m"])
     densify_m = float(swim_cfg["densify_m"])
