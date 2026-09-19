@@ -180,3 +180,93 @@ def test_every_race_carries_the_course_facts_the_directory_prints(
     assert "OpenStreetMap" in (body["bundle"]["attribution"] or "")
     assert body["course"]["place"]
     assert body["course"]["timezone"]
+
+
+# ---------------------------------------------------------------------------
+# The other end of the journey
+# ---------------------------------------------------------------------------
+
+#: A mid-pack athlete, feasible on every distance in the catalogue.
+ATHLETE_M = {
+    "swim_threshold_pace": 105,
+    "bike_threshold_power": 224,
+    "run_threshold_pace": 282,
+    "weight": 75,
+    "sweat_rate": 1.1,
+    "sodium_loss": 900,
+    "gut_carb_ceiling": 75,
+    "caffeine_tolerance": 300,
+}
+
+
+@needs_bundles
+@pytest.mark.parametrize("slug", [e.slug for e in SEASON])
+def test_buying_a_plan_unlocks_the_course_it_was_bought_for(
+    api: TestClient, season: list[str], slug: str, signed_up: dict, paywall: None
+) -> None:
+    """Discover, sign in, enter, buy, solve, open — end to end, on every race.
+
+    The tests above prove the door is shut. This proves it opens, and opens
+    for the race that was paid for rather than for the catalogue: a per-race
+    purchase that unlocked every course would be a season pass sold at the
+    price of one race.
+
+    It also exercises the solver against every shipping bundle, which is the
+    other thing a new course can quietly fail at — a course that lists and
+    locks correctly and then cannot be planned is not a race we can sell.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    headers = signed_up["headers"]
+    for key, value in ATHLETE_M.items():
+        assert api.put(
+            f"/api/v1/constraints/{key}", headers=headers, json={"value": value}
+        ).status_code in (200, 201)
+
+    entered = api.post(
+        "/api/v1/races",
+        headers=headers,
+        json={
+            "course_ref": slug,
+            "event_date": (datetime.now(UTC).date() + timedelta(days=60)).isoformat(),
+            "start_time_local": "07:00",
+        },
+    )
+    assert entered.status_code == 201, entered.text
+    race_id = entered.json()["id"]
+
+    draft = api.post("/api/v1/plans", headers=headers, json={"race_id": race_id})
+    assert draft.status_code == 201, draft.text
+
+    bought = api.post(
+        "/api/v1/checkout/authorize",
+        headers=headers,
+        json={"plan_id": draft.json()["id"], "currency": "GBP"},
+    )
+    assert bought.status_code == 201, bought.text
+    assert bought.json()["purchase"]["status"] == "authorized"
+
+    # The hold is captured by the solve, not by the authorize: an athlete is
+    # charged when the plan they paid for exists, which is also what turns
+    # `RACE_PAID_OR_PAYING` into the `RACE_PURCHASE` the map asks for.
+    solved = api.post(f"/api/v1/plans/{draft.json()['id']}/solve", headers=headers, json={})
+    assert solved.status_code in (200, 201), solved.text
+
+    opened = api.get(f"/api/v1/courses/{slug}/recon", headers=headers).json()
+    assert opened["access"]["map_unlocked"] is True, f"{slug}: paid for and still locked"
+    assert opened["access"]["map_locked_reason"] is None
+    assert any(leg["coordinates"] for leg in opened["legs"]), "no route to draw"
+    assert opened["barriers"], "no cut-off ladder"
+    assert opened["aid_stations"], "no aid stations"
+    assert opened["segments"], "no named segments"
+    assert opened["elevation_profile"], "no elevation profile"
+    assert opened["terrain_pmtiles_key"], "no terrain for the 3D map"
+
+    # The 3D map's own endpoint, which is behind the same decision.
+    assert api.get(f"/api/v1/courses/{slug}/terrain", headers=headers).status_code == 200
+
+    # And nothing else in the catalogue came with it.
+    others = [other for other in season if other != slug]
+    if others:
+        neighbour = api.get(f"/api/v1/courses/{others[0]}/recon", headers=headers).json()
+        assert neighbour["access"]["map_unlocked"] is False, f"buying {slug} unlocked {others[0]}"

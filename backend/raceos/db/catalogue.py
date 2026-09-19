@@ -186,7 +186,10 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
     CatalogueEntry(
         slug="turkiye-703",
         name="IRONMAN 70.3 Türkiye",
-        place="Belek, Türkiye",
+        # Lara, not Belek: the bundle is routed from the Antalya side, because
+        # Belek's resort road network cannot close a 90 km ring. The spec says
+        # so, and the two should not disagree on the page.
+        place="Antalya, Türkiye",
         country="TR",
         timezone="Europe/Istanbul",
         distance_type=DistanceType.HALF,

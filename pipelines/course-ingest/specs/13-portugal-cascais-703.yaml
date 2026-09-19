@@ -22,7 +22,7 @@ start:
 
 swim:
   water_kind: sea
-  water_name: Baia de Cascais
+  water_name: Baía de Cascais
   # The bay opens to the south.
   bearing_deg: 190
 

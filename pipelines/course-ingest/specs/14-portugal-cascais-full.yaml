@@ -21,7 +21,7 @@ start:
 
 swim:
   water_kind: sea
-  water_name: Baia de Cascais
+  water_name: Baía de Cascais
   bearing_deg: 190
 
 bike:
