@@ -38,8 +38,8 @@ pytestmark = pytest.mark.integration
 BUNDLE_DIR = Path(__file__).resolve().parents[3] / "pipelines" / "course-ingest" / "out" / "bundles"
 
 #: Every course the pipeline has built. The remaining specs are marked
-#: `status: pending` and are deliberately not built, so the directory shows
-#: these four — that is expected, not a gap in this test.
+#: `status: pending` and are deliberately not built — that is expected, not a
+#: gap in this test.
 #:
 #: Note that this is the *loader's* view, not the catalogue's: `tramuntana-full`
 #: and `skagen-703` are fictional demo courses that the real seed retires,
@@ -47,10 +47,19 @@ BUNDLE_DIR = Path(__file__).resolve().parents[3] / "pipelines" / "course-ingest"
 #: directly on purpose, to hold the loader to the bundles on disk rather than
 #: to the manifest.
 EXPECTED_SLUGS = {
+    # Demo courses, retired by the real seed.
     "tramuntana-full",
-    "kalmar-703",
     "skagen-703",
-    "italy-emilia-romagna-703",
+    # The showcase.
+    "kalmar-703",
+    # The 2026 season.
+    "calella-barcelona-full",
+    "portugal-cascais-703",
+    "portugal-cascais-full",
+    "malaga-703",
+    "porec-703",
+    "costa-navarino-703",
+    "turkiye-703",
 }
 
 needs_bundles = pytest.mark.skipif(
@@ -289,7 +298,15 @@ def test_directory_lists_the_seeded_courses(client: TestClient, seeded: None) ->
 def test_directory_filters_by_distance(client: TestClient, seeded: None) -> None:
     response = client.get("/api/v1/courses", params={"dist": "70.3"})
     slugs = {row["slug"] for row in response.json()["data"]}
-    assert slugs == {"kalmar-703", "skagen-703", "italy-emilia-romagna-703"}
+    assert slugs == {
+        "kalmar-703",
+        "skagen-703",
+        "portugal-cascais-703",
+        "malaga-703",
+        "porec-703",
+        "costa-navarino-703",
+        "turkiye-703",
+    }
 
 
 @needs_bundles

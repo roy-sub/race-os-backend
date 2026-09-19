@@ -10,7 +10,7 @@ athlete sees is declared here, once, and the bundles fill it in.
 Three kinds of row:
 
 * **Available.** A generated bundle exists and is loaded, so the race can be
-  entered and planned. One event today: IRONMAN 70.3 Italy Emilia-Romagna.
+  entered and planned. Seven events, plus the showcase.
 * **Coming soon.** Announced and dated, no course data yet. Listed honestly,
   and not enterable — :func:`raceos.services.course_service` refuses, and the
   directory renders the row as unavailable rather than hiding it.
@@ -19,8 +19,13 @@ Three kinds of row:
   looks like. It is never listed to a signed-in athlete, because sitting it
   beside surveyed courses would invite it to be read as one.
 
-Adding the fourteenth event is a spec in ``pipelines/course-ingest/specs/``,
-a generated bundle, and flipping one ``availability`` value here.
+Adding an event is a spec in ``pipelines/course-ingest/specs/``, a generated
+bundle, and flipping one ``availability`` value here.
+
+**Races that have been run are removed outright.** The 2026 September events —
+Nice, Wales, Belgrade, Erkner, both Emilia-Romagna distances and Weymouth —
+are gone from this manifest, which retires their rows on the next seed rather
+than deleting them, so plans already solved against one keep working.
 """
 
 from __future__ import annotations
@@ -70,106 +75,6 @@ class CatalogueEntry:
 #: plan is built against.
 CATALOGUE: tuple[CatalogueEntry, ...] = (
     CatalogueEntry(
-        slug="nice-703-world-championship",
-        name="IRONMAN 70.3 World Championship",
-        place="Nice, France",
-        country="FR",
-        timezone="Europe/Paris",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.BRUTAL,
-        lat=43.6957,
-        lng=7.2656,
-        event_date=date(2026, 9, 12),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#1f4e79",
-    ),
-    CatalogueEntry(
-        slug="ironman-wales",
-        name="IRONMAN Wales",
-        place="Tenby, United Kingdom",
-        country="GB",
-        timezone="Europe/London",
-        distance_type=DistanceType.FULL,
-        difficulty=Difficulty.BRUTAL,
-        lat=51.6725,
-        lng=-4.7050,
-        event_date=date(2026, 9, 13),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#2f4f3e",
-    ),
-    CatalogueEntry(
-        slug="belgrade-703",
-        name="IRONMAN 70.3 Belgrade",
-        place="Belgrade, Serbia",
-        country="RS",
-        timezone="Europe/Belgrade",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.APPROACHABLE,
-        lat=44.8125,
-        lng=20.4612,
-        event_date=date(2026, 9, 13),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#5c5240",
-    ),
-    CatalogueEntry(
-        slug="erkner-703",
-        name="IRONMAN 70.3 Erkner",
-        place="Erkner, Germany",
-        country="DE",
-        timezone="Europe/Berlin",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.APPROACHABLE,
-        lat=52.4225,
-        lng=13.7514,
-        event_date=date(2026, 9, 13),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#3f5d4a",
-    ),
-    CatalogueEntry(
-        slug="italy-emilia-romagna-full",
-        name="IRONMAN Italy Emilia-Romagna",
-        place="Cervia, Italy",
-        country="IT",
-        timezone="Europe/Rome",
-        distance_type=DistanceType.FULL,
-        difficulty=Difficulty.MODERATE,
-        lat=44.2646,
-        lng=12.3556,
-        event_date=date(2026, 9, 19),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#1d6f7a",
-    ),
-    # The one event with real course data behind it.
-    CatalogueEntry(
-        slug="italy-emilia-romagna-703",
-        name="IRONMAN 70.3 Italy Emilia-Romagna",
-        place="Cervia, Italy",
-        country="IT",
-        timezone="Europe/Rome",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.APPROACHABLE,
-        lat=44.2646,
-        lng=12.3556,
-        event_date=date(2026, 9, 20),
-        availability=CourseAvailability.AVAILABLE,
-        tone_color="#1d6f7a",
-        bundle_slug="italy-emilia-romagna-703",
-    ),
-    CatalogueEntry(
-        slug="weymouth-703",
-        name="IRONMAN 70.3 Weymouth",
-        place="Weymouth, United Kingdom",
-        country="GB",
-        timezone="Europe/London",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.MODERATE,
-        lat=50.6105,
-        lng=-2.4573,
-        event_date=date(2026, 9, 20),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#33506b",
-    ),
-    CatalogueEntry(
         slug="calella-barcelona-full",
         name="IRONMAN Calella-Barcelona",
         place="Calella, Spain",
@@ -180,9 +85,15 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=41.6146,
         lng=2.6544,
         event_date=date(2026, 10, 4),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#8a5a2b",
+        bundle_slug="calella-barcelona-full",
     ),
+    # Announced and dated, and the one row in the season with no course data.
+    # The Yvelines has no mapped open water wide enough to hold a 70.3 swim —
+    # see `pipelines/course-ingest/specs/12-versailles-703.yaml`, which records
+    # what is missing — so the bundle cannot be generated and the row stays
+    # honest about it rather than pretending to be enterable.
     CatalogueEntry(
         slug="versailles-703",
         name="IRONMAN 70.3 Versailles",
@@ -208,8 +119,9 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=38.6979,
         lng=-9.4215,
         event_date=date(2026, 10, 17),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#2b6ea8",
+        bundle_slug="portugal-cascais-703",
     ),
     CatalogueEntry(
         slug="portugal-cascais-full",
@@ -222,22 +134,9 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=38.6979,
         lng=-9.4215,
         event_date=date(2026, 10, 17),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#2b6ea8",
-    ),
-    CatalogueEntry(
-        slug="porec-703",
-        name="IRONMAN 70.3 Poreč",
-        place="Poreč, Croatia",
-        country="HR",
-        timezone="Europe/Zagreb",
-        distance_type=DistanceType.HALF,
-        difficulty=Difficulty.MODERATE,
-        lat=45.2270,
-        lng=13.5940,
-        event_date=date(2026, 10, 18),
-        availability=CourseAvailability.COMING_SOON,
-        tone_color="#1f6f6b",
+        bundle_slug="portugal-cascais-full",
     ),
     CatalogueEntry(
         slug="malaga-703",
@@ -250,8 +149,24 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=36.7213,
         lng=-4.4214,
         event_date=date(2026, 10, 18),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#a4632a",
+        bundle_slug="malaga-703",
+    ),
+    CatalogueEntry(
+        slug="porec-703",
+        name="IRONMAN 70.3 Poreč",
+        place="Poreč, Croatia",
+        country="HR",
+        timezone="Europe/Zagreb",
+        distance_type=DistanceType.HALF,
+        difficulty=Difficulty.MODERATE,
+        lat=45.2270,
+        lng=13.5940,
+        event_date=date(2026, 10, 18),
+        availability=CourseAvailability.AVAILABLE,
+        tone_color="#1f6f6b",
+        bundle_slug="porec-703",
     ),
     CatalogueEntry(
         slug="costa-navarino-703",
@@ -264,8 +179,9 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=36.9636,
         lng=21.6553,
         event_date=date(2026, 10, 25),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#22648c",
+        bundle_slug="costa-navarino-703",
     ),
     CatalogueEntry(
         slug="turkiye-703",
@@ -278,8 +194,9 @@ CATALOGUE: tuple[CatalogueEntry, ...] = (
         lat=36.8630,
         lng=31.0560,
         event_date=date(2026, 11, 1),
-        availability=CourseAvailability.COMING_SOON,
+        availability=CourseAvailability.AVAILABLE,
         tone_color="#1f7a6a",
+        bundle_slug="turkiye-703",
     ),
     # ---- the showcase -------------------------------------------------
     # Kalmar is not part of the season. It is the signed-out hero map and

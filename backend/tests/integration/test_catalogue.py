@@ -237,3 +237,83 @@ def test_retiring_a_course_hides_it_without_orphaning_a_plan(
     assert race["course_name"]
     assert api_db.scalar(select(Race).where(Race.id == race["id"])) is not None
     assert api_db.scalar(select(Plan).where(Plan.race_id == race["id"])) is None
+
+
+# ---------------------------------------------------------------------------
+# The season as declared, rather than a synthetic stand-in
+# ---------------------------------------------------------------------------
+#
+# Everything above builds its own courses, so it tests the *rules*. These test
+# the *manifest*: that what `catalogue.py` promises is actually on disk and
+# actually gated. A catalogue that names a bundle nobody generated is a race
+# the directory offers and the product cannot open.
+
+
+def test_every_available_race_names_a_bundle_that_exists() -> None:
+    """`AVAILABLE` is a promise that the course can be planned.
+
+    The seed logs a warning and carries on when a named bundle is missing,
+    which is right for a deploy and wrong for a test: the row would ship as
+    enterable with no geometry behind it.
+    """
+    from raceos.db.catalogue import CATALOGUE
+
+    missing = [
+        entry.slug
+        for entry in CATALOGUE
+        if entry.availability is CourseAvailability.AVAILABLE
+        and (
+            entry.bundle_slug is None
+            or not (BUNDLE_DIR / f"{entry.bundle_slug}.bundle.json").is_file()
+        )
+    ]
+    if not BUNDLE_DIR.is_dir():
+        pytest.skip("generated bundles are git-ignored build artefacts")
+    assert missing == [], f"available races with no generated bundle: {missing}"
+
+
+def test_a_coming_soon_race_names_no_bundle() -> None:
+    """The converse, and the reason `availability` is a stored column.
+
+    A row with course data that is still marked coming-soon is a race the
+    product could open and refuses to, which is worse than either state.
+    """
+    from raceos.db.catalogue import CATALOGUE
+
+    wrong = [
+        entry.slug
+        for entry in CATALOGUE
+        if entry.availability is CourseAvailability.COMING_SOON and entry.bundle_slug is not None
+    ]
+    assert wrong == []
+
+
+def test_the_showcase_is_the_only_showcase() -> None:
+    """Exactly one, and it is the one the marketing pages name."""
+    from raceos.db.catalogue import CATALOGUE, SHOWCASE_SLUG
+
+    showcases = [e.slug for e in CATALOGUE if e.visibility is CourseVisibility.SHOWCASE]
+    assert showcases == [SHOWCASE_SLUG]
+
+
+def test_no_race_that_has_already_been_run_is_still_listed() -> None:
+    """The September 2026 events are over; a catalogue is not an archive."""
+    from raceos.db.catalogue import CATALOGUE
+
+    retired = {
+        "nice-703-world-championship",
+        "ironman-wales",
+        "belgrade-703",
+        "erkner-703",
+        "italy-emilia-romagna-full",
+        "italy-emilia-romagna-703",
+        "weymouth-703",
+    }
+    assert retired.isdisjoint({e.slug for e in CATALOGUE})
+
+
+def test_every_catalogue_slug_is_unique() -> None:
+    from raceos.db.catalogue import CATALOGUE
+
+    slugs = [e.slug for e in CATALOGUE]
+    assert len(slugs) == len(set(slugs))
